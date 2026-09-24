@@ -1,0 +1,56 @@
+.env
+.env.*
+!.env.example
+!**/.env.example
+*.pem
+*.key
+*.p12
+node_modules/
+dist/
+build/
+coverage/
+.expo/
+.next/
+.vite/
+*.log
+logs/
+tmp/
+temp/
+.cache/
+*.tmp
+*.swp
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Dados e documentos corporativos sensíveis
+*.xls
+*.xlsx
+*.xlsm
+*.xlsb
+*.csv
+*.mp3
+*.wav
+*.m4a
+dados-reais/
+documentos-corporativos/
+entrevistas-originais/
+uploads/*
+!uploads/.gitkeep
+backend/uploads/*
+!backend/uploads/.gitkeep
+
+# Backups e pacotes recebidos
+*.zip
+*.7z
+*.rar
+*.bak
+*.backup
+
+
+# Relatórios acadêmicos e documentos internos ficam na estrutura local da disciplina
+*.docx
+*.pdf
+# Histórico Mobile preservado localmente; fonte ativa no repositório Mobile
+docs/fase-1/BACKLOG_MOBILE.md
