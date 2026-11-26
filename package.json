@@ -1,26 +1,15 @@
 {
-  "name": "frotamax",
-  "version": "1.0.0",
-  "description": "Fleet Management Application - FrotaMax",
-  "main": "index.js",
+  "name": "frotamax-web",
+  "version": "0.2.0",
+  "description": "Frota Max Web - gestão de frotas do Departamento de Frotas (projeto extensionista)",
+  "private": true,
   "scripts": {
-    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
-    "dev:backend": "cd backend && npm run dev",
-    "dev:frontend": "cd frontend && npm run dev",
-    "build": "npm run build:backend && npm run build:frontend",
-    "build:backend": "cd backend && npm run build",
-    "build:frontend": "cd frontend && npm run build",
-    "start": "cd backend && npm start",
-    "install:all": "npm install && cd backend && npm install && cd ../frontend && npm install"
+    "install:all": "npm install && npm --prefix backend install && npm --prefix frontend install",
+    "db:setup": "npm --prefix backend run db:setup",
+    "dev": "concurrently -n api,web -c blue,green \"npm --prefix backend run dev\" \"npm --prefix frontend run dev\"",
+    "build": "npm --prefix backend run build && npm --prefix frontend run build"
   },
-  "keywords": ["fleet", "management", "vehicles", "drivers", "reservations"],
-  "author": "FrotaMax Team",
-  "license": "MIT",
   "devDependencies": {
     "concurrently": "^8.2.2"
-  },
-  "overrides": {
-    "glob": "^10.4.5",
-    "inflight": "npm:@nodelib/fs.walk@^2.0.0"
   }
 }

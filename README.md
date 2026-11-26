@@ -1,40 +1,53 @@
 # Frota Max Web
 
-Projeto de **Programação Web Aplicada**, com entrega acadêmica independente do aplicativo Mobile. Gabriel Pedro Neto França · ADS · UniEVANGÉLICA · 2026/2.
+Aplicação Web administrativa do **Frota Max**, desenvolvida para o Departamento de Frotas da Araguaia S.A. no projeto extensionista da disciplina Programação Web Aplicada (UniEVANGÉLICA, 2026/2).
 
-## Objetivo e escopo preliminar
+> **Estado atual:** em desenvolvimento (Sprint 01). Usa somente dados fictícios em ambiente local. Nenhum dado corporativo real nem credencial institucional deve ser adicionado a este repositório.
 
-Apoiar a gestão administrativa do Departamento de Frotas: veículos, condutores, reservas, manutenção, históricos e indicadores, conforme priorização e validação do MVP. As possibilidades levantadas não representam funcionalidades aprovadas ou prontas.
+## Arquitetura
 
-**Estado atual: base técnica recebida, ainda não homologada.** A importação inicial para o Git registra a base existente e a organização atual. Não comprova desenvolvimento nas sprints acadêmicas, execução bem-sucedida ou aceite institucional.
-
-## Estrutura
-
-- `frontend/`: aplicação de referência React/TypeScript.
-- `backend/`: API de referência Node.js/Express/TypeScript.
-- `database/`: esquema e migrações de referência Supabase/PostgreSQL.
-- `docs/fase-1/`: backlog Web, auditoria e mapeamento acadêmico.
-- `docs/entregas/`: orientação para evidências e entregas Web.
-- `.github/`: modelos de issue e pull request.
-
-## Execução da base recebida
-
-```bash
-npm install
-npm run install:all
-npm run dev
+```
+Navegador ──► Front-end (React + Vite + MUI, porta 3000)
+                  │  HTTP/JSON (Axios)
+                  ▼
+              API REST (Node.js + Express + TypeScript, porta 3001)
+                  │  autenticação, autorização, validação e regras
+                  ▼
+              PostgreSQL local (acesso exclusivo do back-end)
 ```
 
-Esses comandos vêm da organização existente e ainda precisam de validação em ambiente limpo. Usar os arquivos `.env.example` para preparar configurações locais, com dados fictícios. A organização do GitHub não homologou build, testes ou implantação.
+| Pasta | Conteúdo |
+|---|---|
+| `backend/` | API REST (`src/app.ts`, rotas, middlewares, acesso ao banco em `src/db`) |
+| `frontend/` | Interface Web (páginas, componentes, contexto de autenticação, serviços HTTP) |
+| `database/migrations/` | Scripts SQL versionados que criam a estrutura do banco |
+| `docs/` | Auditoria da base recebida e referências |
 
-## Integração com Mobile
+## Pré-requisitos
 
-A API e o banco ficam neste repositório. O [Frota Max Mobile](https://github.com/dev-gabri/frotamax-mobile) terá código próprio e consumirá um contrato comum ainda a definir. Corrigir os pontos da [auditoria técnica](docs/fase-1/AUDITORIA_TECNICA_INICIAL.md) antes de integrar dados reais.
+- Node.js 18 ou superior (com npm)
+- PostgreSQL 14 ou superior, rodando localmente
 
-[Índice dos dois projetos](https://github.com/dev-gabri/frotamax) · [Backlog Web](docs/fase-1/BACKLOG_WEB.md) · [Issues Web](https://github.com/dev-gabri/frotamax-web/issues)
+## Execução local
 
-Relatório, planejamento e evidências Web são independentes de Mobile. Relatórios anteriores permanecem localmente, fora do Git, para revisão e atualização.
-
-## Privacidade
-
-Repositório privado. Não versionar credenciais, planilhas corporativas, entrevistas, uploads ou dados pessoais. Integrações externas dependem de autorização e validação técnica. A base possui pendências conhecidas de autorização, logs e arquivos e não deve ser usada com dados reais antes das correções.
+1. **Criar o usuário e os bancos no PostgreSQL** (uma única vez):
+   ```sql
+   CREATE ROLE frotamax LOGIN PASSWORD 'frotamax' CREATEDB;
+   CREATE DATABASE frotamax OWNER frotamax;
+   CREATE DATABASE frotamax_test OWNER frotamax;
+   ```
+2. **Configurar as variáveis de ambiente:**
+   ```bash
+   cp backend/.env.example backend/.env
+   # edite backend/.env e defina um JWT_SECRET próprio (mínimo de 32 caracteres)
+   ```
+3. **Instalar as dependências:**
+   ```bash
+   npm run install:all
+   ```
+4. **Executar a API e a interface:**
+   ```bash
+   npm run dev
+   ```
+   - API: http://localhost:3001/api/health
+   - Interface: http://localhost:3000

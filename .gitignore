@@ -1,56 +1,30 @@
+# Dependências
+node_modules/
+
+# Variáveis de ambiente (segredos locais) — somente os arquivos .env.example são versionados
 .env
 .env.*
 !.env.example
-!**/.env.example
-*.pem
-*.key
-*.p12
-node_modules/
+
+# Saídas de build e cobertura
 dist/
 build/
 coverage/
-.expo/
-.next/
-.vite/
+*.tsbuildinfo
+
+# Logs
 *.log
-logs/
-tmp/
-temp/
-.cache/
-*.tmp
-*.swp
-.DS_Store
-.idea/
+npm-debug.log*
+
+# Editores e sistema operacional
 .vscode/*
 !.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
 
-# Dados e documentos corporativos sensíveis
-*.xls
+# Dados corporativos e arquivos locais que não pertencem ao código
 *.xlsx
 *.xlsm
-*.xlsb
 *.csv
-*.mp3
-*.wav
-*.m4a
-dados-reais/
-documentos-corporativos/
-entrevistas-originais/
-uploads/*
-!uploads/.gitkeep
-backend/uploads/*
-!backend/uploads/.gitkeep
-
-# Backups e pacotes recebidos
-*.zip
-*.7z
-*.rar
-*.bak
-*.backup
-
-
-# Relatórios acadêmicos e documentos internos ficam na estrutura local da disciplina
-*.docx
-*.pdf
-# Histórico Mobile preservado localmente; fonte ativa no repositório Mobile
-docs/fase-1/BACKLOG_MOBILE.md
+uploads/

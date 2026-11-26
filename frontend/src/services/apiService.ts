@@ -1,179 +1,88 @@
-import axios, { AxiosInstance, AxiosResponse } from 'axios';
+import axios, { AxiosError, AxiosInstance } from 'axios';
 import { ApiResponse } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+export const TOKEN_KEY = 'frotamax_token';
 
+/** Erro com mensagem já pronta para exibição ao usuário. */
+export class ApiError extends Error {
+  constructor(message: string, public status?: number, public details?: string[]) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
+/**
+ * Cliente HTTP único da aplicação.
+ * Inclui o token nas requisições e converte erros da API em mensagens compreensíveis.
+ */
 class ApiService {
   private client: AxiosInstance;
+  private onUnauthorized?: () => void;
 
   constructor() {
     this.client = axios.create({
       baseURL: `${API_BASE_URL}/api`,
       timeout: 10000,
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
     });
 
-    // Add request interceptor to include auth token
-    this.client.interceptors.request.use(
-      (config) => {
-        const token = localStorage.getItem('frotamax_token');
-        
-        // More thorough token validation
-        if (token && 
-            token.trim() !== '' && 
-            token !== 'null' && 
-            token !== 'undefined' && 
-            token !== 'false' &&
-            token.length > 10) {
-          try {
-            // Basic validation to check if it looks like a JWT token
-            const parts = token.split('.');
-            if (parts.length === 3 && parts.every(part => part.length > 0)) {
-              // Additional check: ensure it's not just periods
-              if (!token.match(/^\.+$/)) {
-                config.headers.Authorization = `Bearer ${token}`;
-              } else {
-                console.warn('Token contains only periods, removing...');
-                this.clearAuthData();
-              }
-            } else {
-              console.warn(`Invalid token format found (${parts.length} parts), removing...`);
-              this.clearAuthData();
-            }
-          } catch (error) {
-            console.warn('Error validating token, removing...', error);
-            this.clearAuthData();
-          }
-        } else if (token) {
-          console.warn(`Invalid token value found: "${token}", removing...`);
-          this.clearAuthData();
-        }
-        return config;
-      },
-      (error) => {
-        return Promise.reject(error);
-      }
-    );
-
-    // Add response interceptor to handle common errors
-    this.client.interceptors.response.use(
-      (response: AxiosResponse) => response,
-      (error) => {
-        if (error.response?.status === 401) {
-          // Token expired or invalid - only redirect if not already on login page
-          localStorage.removeItem('frotamax_token');
-          localStorage.removeItem('frotamax_user');
-          localStorage.removeItem('frotamax_profile');
-          
-          if (!window.location.pathname.includes('/login') && !window.location.pathname.includes('/first-login')) {
-            window.location.href = '/login';
-          }
-        }
-        return Promise.reject(error);
-      }
-    );
+    this.client.interceptors.request.use((config) => {
+      const token = sessionStorage.getItem(TOKEN_KEY);
+      if (token) config.headers.Authorization = `Bearer ${token}`;
+      return config;
+    });
   }
 
-  private clearAuthData() {
-    localStorage.removeItem('frotamax_token');
-    localStorage.removeItem('frotamax_user');
-    localStorage.removeItem('frotamax_profile');
+  /** Função chamada quando a API responder 401 (sessão expirada ou inválida). */
+  setUnauthorizedHandler(handler: () => void) {
+    this.onUnauthorized = handler;
   }
 
-  async get<T>(endpoint: string): Promise<ApiResponse<T>> {
+  private toApiError(error: unknown): ApiError {
+    const err = error as AxiosError<ApiResponse<unknown>>;
+    if (err.response) {
+      const status = err.response.status;
+      if (status === 401 && !err.config?.url?.includes('/auth/login')) this.onUnauthorized?.();
+      const body = err.response.data;
+      return new ApiError(body?.error || 'Não foi possível concluir a operação.', status, body?.details);
+    }
+    return new ApiError('Não foi possível conectar ao servidor. Verifique se a API está em execução.');
+  }
+
+  async get<T>(url: string, params?: Record<string, unknown>): Promise<T> {
     try {
-      const response = await this.client.get<ApiResponse<T>>(endpoint);
-      return response.data;
-    } catch (error: any) {
-      if (error.response?.data) {
-        return error.response.data;
-      }
-      throw new Error('Erro de conexão com o servidor');
+      const { data } = await this.client.get<ApiResponse<T>>(url, { params });
+      return data.data as T;
+    } catch (error) {
+      throw this.toApiError(error);
     }
   }
 
-  async post<T>(endpoint: string, data: any): Promise<ApiResponse<T>> {
+  async post<T>(url: string, body: unknown): Promise<T> {
     try {
-      const response = await this.client.post<ApiResponse<T>>(endpoint, data);
-      return response.data;
-    } catch (error: any) {
-      if (error.response?.data) {
-        return error.response.data;
-      }
-      throw new Error('Erro de conexão com o servidor');
+      const { data } = await this.client.post<ApiResponse<T>>(url, body);
+      return data.data as T;
+    } catch (error) {
+      throw this.toApiError(error);
     }
   }
 
-  async put<T>(endpoint: string, data: any): Promise<ApiResponse<T>> {
+  async put<T>(url: string, body: unknown): Promise<T> {
     try {
-      const response = await this.client.put<ApiResponse<T>>(endpoint, data);
-      return response.data;
-    } catch (error: any) {
-      if (error.response?.data) {
-        return error.response.data;
-      }
-      throw new Error('Erro de conexão com o servidor');
+      const { data } = await this.client.put<ApiResponse<T>>(url, body);
+      return data.data as T;
+    } catch (error) {
+      throw this.toApiError(error);
     }
   }
 
-  async patch<T>(endpoint: string, data: any): Promise<ApiResponse<T>> {
+  async patch<T>(url: string, body: unknown): Promise<T> {
     try {
-      const response = await this.client.patch<ApiResponse<T>>(endpoint, data);
-      return response.data;
-    } catch (error: any) {
-      if (error.response?.data) {
-        return error.response.data;
-      }
-      throw new Error('Erro de conexão com o servidor');
-    }
-  }
-
-  async delete<T>(endpoint: string): Promise<ApiResponse<T>> {
-    try {
-      const response = await this.client.delete<ApiResponse<T>>(endpoint);
-      return response.data;
-    } catch (error: any) {
-      if (error.response?.data) {
-        return error.response.data;
-      }
-      throw new Error('Erro de conexão com o servidor');
-    }
-  }
-
-  async request<T>(endpoint: string, method: string, data?: any): Promise<T> {
-    try {
-      const response = await this.client.request<T>({
-        url: endpoint,
-        method: method as any,
-        data
-      });
-      return response.data;
-    } catch (error: any) {
-      if (error.response?.data) {
-        return error.response.data;
-      }
-      throw new Error('Erro de conexão com o servidor');
-    }
-  }
-
-  async requestWithFormData<T>(endpoint: string, method: string, formData: FormData): Promise<T> {
-    try {
-      const response = await this.client.request<T>({
-        url: endpoint,
-        method: method as any,
-        data: formData,
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
-      return response.data;
-    } catch (error: any) {
-      if (error.response?.data) {
-        return error.response.data;
-      }
-      throw new Error('Erro de conexão com o servidor');
+      const { data } = await this.client.patch<ApiResponse<T>>(url, body);
+      return data.data as T;
+    } catch (error) {
+      throw this.toApiError(error);
     }
   }
 }

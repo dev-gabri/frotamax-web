@@ -1,39 +1,27 @@
 import React from 'react';
-import { Navigate } from 'react-router-dom';
-import { Box, Alert } from '@mui/material';
+import { Navigate, useLocation } from 'react-router-dom';
+import { Alert, Box } from '@mui/material';
 import { useAuth } from '../contexts/AuthContext';
+import { UserRole } from '../types';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
-  roles?: string[];
+  roles?: UserRole[];
 }
 
+/** Impede a navegação para áreas restritas sem sessão válida. */
 const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, roles }) => {
-  const { isAuthenticated, user, loading } = useAuth();
-
-  if (loading) {
-    return (
-      <Box
-        display="flex"
-        justifyContent="center"
-        alignItems="center"
-        minHeight="100vh"
-      >
-        Loading...
-      </Box>
-    );
-  }
+  const { isAuthenticated, hasRole } = useAuth();
+  const location = useLocation();
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
+    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   }
 
-  if (roles && user && !roles.includes(user.role)) {
+  if (roles && !hasRole(roles)) {
     return (
       <Box p={3}>
-        <Alert severity="error">
-          Você não tem permissão para acessar esta página.
-        </Alert>
+        <Alert severity="error">Você não tem permissão para acessar esta página.</Alert>
       </Box>
     );
   }
