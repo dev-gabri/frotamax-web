@@ -5,6 +5,7 @@ import { env } from './config/env';
 import { checkDatabase } from './db/pool';
 import { requestLogger } from './middleware/requestLogger';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
+import authRoutes from './routes/auth';
 
 /**
  * Monta a aplicação Express sem iniciar o servidor,
@@ -13,6 +14,7 @@ import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 export function createApp() {
   const app = express();
 
+  app.set('trust proxy', false);
   app.use(helmet());
   app.use(cors({ origin: env.corsOrigin, credentials: true }));
   app.use(express.json({ limit: '100kb' }));
@@ -25,6 +27,8 @@ export function createApp() {
       data: { api: 'ok', database: database ? 'ok' : 'indisponível' },
     });
   });
+
+  app.use('/api/auth', authRoutes);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

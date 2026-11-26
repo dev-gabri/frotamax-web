@@ -10,7 +10,7 @@ export const requestLogger = (req: Request, res: Response, next: NextFunction) =
   res.on('finish', () => {
     if (env.isTest) return;
     const duration = Date.now() - start;
-    console.log(`${req.method} ${req.path} ${res.statusCode} - ${duration}ms`);
+    console.log(`${req.method} ${req.originalUrl.split('?')[0]} ${res.statusCode} - ${duration}ms`);
   });
   next();
 };
