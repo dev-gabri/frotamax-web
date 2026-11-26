@@ -56,7 +56,7 @@ import {
 import SituacaoChip from '../components/veiculos/SituacaoChip';
 import VeiculoFormDialog from '../components/veiculos/VeiculoFormDialog';
 
-const km = (n: number) => `${n.toLocaleString('pt-BR')} km`;
+const km = (n: number) => `${n.toLocaleString('pt-BR')}\u00A0km`;
 
 /** Cartão de indicador (total e quantidade por situação). */
 const Indicador: React.FC<{ titulo: string; valor?: number; total?: number; icone: React.ReactNode; cor: string }> = ({ titulo, valor, total, icone, cor }) => (
@@ -154,7 +154,9 @@ const VehiclesPage: React.FC = () => {
       <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', sm: 'center' }} gap={2} mb={3}>
         <Box>
           <Typography variant="h4" component="h1">Veículos</Typography>
-          <Typography color="text.secondary">Cadastre, consulte e atualize os veículos da frota.</Typography>
+          <Typography color="text.secondary">
+            {podeGerenciar ? 'Cadastre, consulte e atualize os veículos da frota.' : 'Consulte os veículos da frota e sua situação atual.'}
+          </Typography>
         </Box>
         {podeGerenciar && (
           <Button variant="contained" startIcon={<Add />} onClick={abrirCadastro} size="large">Novo veículo</Button>
@@ -201,11 +203,17 @@ const VehiclesPage: React.FC = () => {
               </TextField>
             </Grid>
             <Grid size={{ xs: 12, md: 1 }} sx={{ textAlign: { md: 'right' } }}>
-              <Tooltip title="Limpar filtros">
-                <span>
-                  <IconButton aria-label="Limpar filtros" onClick={limparFiltros} disabled={!filtrosAtivos}><FilterAltOff /></IconButton>
-                </span>
-              </Tooltip>
+              {telaPequena ? (
+                <Button fullWidth variant="outlined" startIcon={<FilterAltOff />} onClick={limparFiltros} disabled={!filtrosAtivos}>
+                  Limpar filtros
+                </Button>
+              ) : (
+                <Tooltip title="Limpar filtros">
+                  <span>
+                    <IconButton aria-label="Limpar filtros" onClick={limparFiltros} disabled={!filtrosAtivos}><FilterAltOff /></IconButton>
+                  </span>
+                </Tooltip>
+              )}
             </Grid>
           </Grid>
         </CardContent>

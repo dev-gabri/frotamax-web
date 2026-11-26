@@ -117,6 +117,7 @@ const VeiculoFormDialog: React.FC<Props> = ({ open, veiculo, salvando, erroApi, 
 
   const campo = (nome: keyof Form, label: string, extra: Partial<React.ComponentProps<typeof TextField>> = {}) => (
     <TextField
+      {...extra}
       id={`veiculo-${nome}`}
       label={label}
       value={form[nome]}
@@ -124,7 +125,6 @@ const VeiculoFormDialog: React.FC<Props> = ({ open, veiculo, salvando, erroApi, 
       error={!!erros[nome]}
       helperText={erros[nome] || extra.helperText}
       disabled={salvando}
-      {...extra}
     />
   );
 
