@@ -1,43 +1,63 @@
 import React, { useState } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
+  Alert,
   Box,
-  Container,
+  Button,
+  CircularProgress,
+  IconButton,
+  InputAdornment,
   Paper,
   TextField,
-  Button,
   Typography,
-  Alert,
-  InputAdornment,
-  IconButton,
-  CircularProgress,
 } from '@mui/material';
-import { Visibility, VisibilityOff, Email, Lock } from '@mui/icons-material';
+import { Email, Lock, Login as LoginIcon, Visibility, VisibilityOff } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
-import { useSnackbar } from 'notistack';
+import { brand } from '../theme';
+import logo from '../assets/images/logo.png';
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/**
+ * Tela de acesso ao Frota Max Web (card S1-09).
+ * Valida os campos antes do envio, mostra o retorno da API sem detalhes técnicos
+ * e redireciona para a área solicitada após a autenticação.
+ */
 const LoginPage: React.FC = () => {
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  
+  const [senha, setSenha] = useState('');
+  const [mostrarSenha, setMostrarSenha] = useState(false);
+  const [enviando, setEnviando] = useState(false);
+  const [erro, setErro] = useState('');
+  const [erros, setErros] = useState<{ email?: string; senha?: string }>({});
+
   const { login } = useAuth();
-  const { enqueueSnackbar } = useSnackbar();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const destino = (location.state as { from?: string } | null)?.from || '/veiculos';
+
+  const validar = () => {
+    const novos: typeof erros = {};
+    if (!email.trim()) novos.email = 'Informe o e-mail.';
+    else if (!EMAIL_REGEX.test(email.trim())) novos.email = 'Informe um e-mail válido.';
+    if (!senha) novos.senha = 'Informe a senha.';
+    setErros(novos);
+    return Object.keys(novos).length === 0;
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
-    setLoading(true);
-
+    setErro('');
+    if (!validar()) return;
+    setEnviando(true);
     try {
-      await login(email, password);
-      enqueueSnackbar('Login realizado com sucesso!', { variant: 'success' });
-    } catch (error: any) {
-      setError(error.response?.data?.error || error.message || 'Erro ao fazer login');
-      enqueueSnackbar('Erro ao fazer login', { variant: 'error' });
+      await login(email.trim(), senha);
+      navigate(destino, { replace: true });
+    } catch (error) {
+      setErro((error as Error).message);
+      setSenha('');
     } finally {
-      setLoading(false);
+      setEnviando(false);
     }
   };
 
@@ -48,123 +68,91 @@ const LoginPage: React.FC = () => {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-        py: 3,
+        px: 2,
+        py: 4,
+        background: `linear-gradient(160deg, ${brand.navy} 0%, ${brand.navyLight} 55%, #1d4f91 100%)`,
       }}
     >
-      <Container maxWidth="sm">
-        <Paper
-          elevation={10}
-          sx={{
-            p: 4,
-            borderRadius: 4,
-            backdropFilter: 'blur(10px)',
-            background: 'rgba(255, 255, 255, 0.95)',
-          }}
-        >
-          <Box textAlign="center" mb={3}>
-            <Box mb={2}>
-              <img 
-                src="/src/assets/images/logo.png" 
-                alt="FrotaMax Logo" 
-                style={{
-                  maxWidth: '300px',
-                  maxHeight: '242px',
-                  width: 'auto',
-                  height: 'auto'
-                }}
-              />
-            </Box>
-            <Typography variant="h6" color="text.secondary" mt={1}>
-              Sistema de Gestão de Frotas
-            </Typography>
-          </Box>
+      <Paper
+        elevation={0}
+        sx={{ width: '100%', maxWidth: 420, p: { xs: 3, sm: 5 }, borderRadius: 4, boxShadow: '0 20px 50px rgba(0,0,0,0.25)' }}
+      >
+        <Box textAlign="center" mb={3}>
+          <img src={logo} alt="Logotipo Frota Max" style={{ width: 96, height: 'auto' }} />
+          <Typography component="h1" variant="h5" mt={1}>
+            Acessar o Frota Max
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Gestão da frota do Departamento de Frotas
+          </Typography>
+        </Box>
 
-          {error && (
-            <Alert severity="error" sx={{ mb: 2 }}>
-              {error}
-            </Alert>
-          )}
+        {erro && (
+          <Alert severity="error" sx={{ mb: 2 }} role="alert">
+            {erro}
+          </Alert>
+        )}
 
-          <Box component="form" onSubmit={handleSubmit}>
-            <TextField
-              fullWidth
-              label="Email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              margin="normal"
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <Email color="action" />
-                  </InputAdornment>
-                ),
-              }}
-              sx={{ mb: 2 }}
-            />
+        <Box component="form" onSubmit={handleSubmit} noValidate>
+          <TextField
+            label="E-mail"
+            type="email"
+            autoComplete="username"
+            autoFocus
+            required
+            margin="normal"
+            size="medium"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            error={!!erros.email}
+            helperText={erros.email}
+            disabled={enviando}
+            InputProps={{ startAdornment: <InputAdornment position="start"><Email color="action" /></InputAdornment> }}
+          />
+          <TextField
+            label="Senha"
+            type={mostrarSenha ? 'text' : 'password'}
+            autoComplete="current-password"
+            required
+            margin="normal"
+            size="medium"
+            value={senha}
+            onChange={(e) => setSenha(e.target.value)}
+            error={!!erros.senha}
+            helperText={erros.senha}
+            disabled={enviando}
+            InputProps={{
+              startAdornment: <InputAdornment position="start"><Lock color="action" /></InputAdornment>,
+              endAdornment: (
+                <InputAdornment position="end">
+                  <IconButton
+                    aria-label={mostrarSenha ? 'Ocultar senha' : 'Mostrar senha'}
+                    onClick={() => setMostrarSenha((v) => !v)}
+                    edge="end"
+                  >
+                    {mostrarSenha ? <VisibilityOff /> : <Visibility />}
+                  </IconButton>
+                </InputAdornment>
+              ),
+            }}
+          />
+          <Button
+            type="submit"
+            variant="contained"
+            size="large"
+            fullWidth
+            disabled={enviando}
+            startIcon={enviando ? <CircularProgress size={18} color="inherit" /> : <LoginIcon />}
+            sx={{ mt: 3, py: 1.3 }}
+          >
+            {enviando ? 'Entrando…' : 'Entrar'}
+          </Button>
+        </Box>
 
-            <TextField
-              fullWidth
-              label="Senha"
-              type={showPassword ? 'text' : 'password'}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              margin="normal"
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <Lock color="action" />
-                  </InputAdornment>
-                ),
-                endAdornment: (
-                  <InputAdornment position="end">
-                    <IconButton
-                      onClick={() => setShowPassword(!showPassword)}
-                      edge="end"
-                    >
-                      {showPassword ? <VisibilityOff /> : <Visibility />}
-                    </IconButton>
-                  </InputAdornment>
-                ),
-              }}
-              sx={{ mb: 3 }}
-            />
-
-            <Button
-              type="submit"
-              fullWidth
-              variant="contained"
-              size="large"
-              disabled={loading}
-              sx={{
-                py: 1.5,
-                fontSize: '1.1rem',
-                fontWeight: 600,
-                borderRadius: 2,
-                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                '&:hover': {
-                  background: 'linear-gradient(135deg, #5a67d8 0%, #6b46c1 100%)',
-                },
-              }}
-            >
-              {loading ? (
-                <CircularProgress size={24} color="inherit" />
-              ) : (
-                'Entrar'
-              )}
-            </Button>
-          </Box>
-
-          <Box textAlign="center" mt={3}>
-            <Typography variant="body2" color="text.secondary">
-              Versão 1.0.0 - FrotaMax &copy; 2024
-            </Typography>
-          </Box>
-        </Paper>
-      </Container>
+        <Typography variant="caption" color="text.secondary" display="block" textAlign="center" mt={3}>
+          Acesso restrito aos usuários autorizados do Departamento de Frotas.
+        </Typography>
+      </Paper>
     </Box>
   );
 };
