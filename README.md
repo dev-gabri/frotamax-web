@@ -2,7 +2,7 @@
 
 Aplicação Web administrativa do **Frota Max**, desenvolvida para o Departamento de Frotas da Araguaia S.A. no projeto extensionista da disciplina Programação Web Aplicada (UniEVANGÉLICA, 2026/2).
 
-> **Estado atual:** Sprint 01 concluída: autenticação, autorização por perfil e gestão de veículos (API + interface), testados em ambiente local. Usa somente dados fictícios. Nenhum dado corporativo real nem credencial institucional deve ser adicionado a este repositório.
+> **Estado atual:** Sprints 01 e 02 concluídas: autenticação, autorização por perfil, gestão de veículos, condutores e reservas/empréstimos com verificação de disponibilidade (API + interface), testados em ambiente local. Usa somente dados fictícios. Nenhum dado corporativo real nem credencial institucional deve ser adicionado a este repositório.
 
 ## Funcionalidades disponíveis
 
@@ -11,7 +11,8 @@ Aplicação Web administrativa do **Frota Max**, desenvolvida para o Departament
 | Login e sessão (JWT), bloqueio após tentativas falhas | ✅ Sprint 01 |
 | Perfis `admin`, `gestor_frota` e `visualizador`, com autorização no servidor | ✅ Sprint 01 |
 | Veículos: indicadores, busca, filtros, cadastro, edição e alteração de situação | ✅ Sprint 01 |
-| Condutores e reservas/empréstimos com verificação de disponibilidade | ⏳ Sprint 02 |
+| Condutores: cadastro, situação da CNH e liberação para o POOL | ✅ Sprint 02 |
+| Reservas e empréstimos de veículos POOL com verificação de disponibilidade e de conflitos, retirada e cancelamento | ✅ Sprint 02 |
 | Devolução, liberação da disponibilidade e histórico | ⏳ Sprint 03 |
 
 ## Arquitetura
@@ -28,9 +29,9 @@ Navegador ──► Front-end (React + Vite + MUI, porta 3000)
 
 | Pasta | Conteúdo |
 |---|---|
-| `backend/src` | `app.ts` (montagem da API), `routes/` (auth, veiculos), `middleware/` (autenticação, autorização, validação, erros, logs), `db/` (conexão, migrations, seed), `config/` (ambiente e permissões) |
+| `backend/src` | `app.ts` (montagem da API), `routes/` (auth, veiculos, condutores, reservas), `middleware/` (autenticação, autorização, validação, erros, logs), `db/` (conexão, migrations, seed), `config/` (ambiente e permissões) |
 | `backend/tests` | Testes automatizados da API (Jest + Supertest) |
-| `frontend/src` | `pages/` (login, veículos), `components/` (layout, rota protegida, componentes de veículos), `contexts/` (sessão), `services/` (API) |
+| `frontend/src` | `pages/` (login, veículos, condutores, reservas), `components/` (layout, rota protegida, componentes de veículos, condutores e reservas), `contexts/` (sessão), `services/` (API) |
 | `database/migrations` | Scripts SQL versionados da estrutura do banco |
 | `docs/` | Auditoria da base recebida, perfis e permissões, registros de teste por sprint |
 
@@ -85,9 +86,11 @@ A senha é a definida em `SEED_SENHA` no seu `backend/.env`.
 npm --prefix backend test
 ```
 
-Os testes recriam o banco `frotamax_test` a cada execução e nunca usam o banco de desenvolvimento. O registro completo, com os testes de interface e as falhas corrigidas, está em `docs/sprint-01/TESTES_SPRINT_01.md`.
+Os testes recriam o banco `frotamax_test` a cada execução e nunca usam o banco de desenvolvimento. O registro completo, com os testes de interface e as falhas corrigidas, está em `docs/sprint-01/TESTES_SPRINT_01.md` e `docs/sprint-02/TESTES_SPRINT_02.md`. As regras de reserva estão em `docs/sprint-02/REGRAS_RESERVAS.md`.
 
-## Endpoints da API (Sprint 01)
+> Quem já tinha o banco da Sprint 01 só precisa rodar `npm run db:setup` de novo: a migration `002` cria as tabelas novas e o seed acrescenta condutores e reservas fictícios.
+
+## Endpoints da API
 
 | Método | Rota | Acesso |
 |---|---|---|
@@ -100,6 +103,18 @@ Os testes recriam o banco `frotamax_test` a cada execução e nunca usam o banco
 | POST | `/api/veiculos` | admin, gestor_frota |
 | PUT | `/api/veiculos/:id` | admin, gestor_frota |
 | PATCH | `/api/veiculos/:id/situacao` | admin, gestor_frota |
+| GET | `/api/condutores?busca=&situacao_cnh=&liberado_pool=&ativo=` | Todos os perfis |
+| GET | `/api/condutores/resumo` | Todos os perfis |
+| GET | `/api/condutores/:id` | Todos os perfis |
+| POST | `/api/condutores` | admin, gestor_frota |
+| PUT | `/api/condutores/:id` | admin, gestor_frota |
+| GET | `/api/reservas?busca=&status=&tipo=&veiculo_id=&condutor_id=` | Todos os perfis |
+| GET | `/api/reservas/resumo` | Todos os perfis |
+| GET | `/api/reservas/disponibilidade?tipo=&inicio=&fim=` | Todos os perfis |
+| GET | `/api/reservas/:id` (com histórico) | Todos os perfis |
+| POST | `/api/reservas` | admin, gestor_frota |
+| POST | `/api/reservas/:id/retirada` | admin, gestor_frota |
+| POST | `/api/reservas/:id/cancelamento` | admin, gestor_frota |
 
 ## Segurança
 
