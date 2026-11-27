@@ -1,6 +1,6 @@
 import { NextFunction, Response, Router } from 'express';
 import Joi from 'joi';
-import { query } from '../db/pool';
+import { query, transaction } from '../db/pool';
 import { authenticate } from '../middleware/auth';
 import { authorize } from '../middleware/authorize';
 import { AppError } from '../middleware/errorHandler';
@@ -63,7 +63,12 @@ const idSchema = Joi.object({
   id: Joi.string().guid({ version: ['uuidv4'] }).required().label('Identificador'),
 }).messages(mensagens);
 
+const inativarSchema = Joi.object({
+  motivo: Joi.string().trim().min(5).max(300).required().label('Motivo da inativação'),
+}).messages(mensagens);
+
 const listarSchema = Joi.object({
+  ativo: Joi.boolean().default(true).label('Ativo'),
   busca: Joi.string().trim().max(60).allow('').label('Busca'),
   situacao: Joi.string().valid(...SITUACOES).label('Situação'),
   tipo: Joi.string().valid(...TIPOS).label('Tipo'),
@@ -73,17 +78,20 @@ const listarSchema = Joi.object({
 const historicoSchema = Joi.object(paginacao).messages(mensagens);
 
 const COLUNAS = `id, codigo, placa, marca, modelo, ano_modelo, tipo, unidade, quilometragem,
-  modalidade, situacao, observacoes, criado_em, atualizado_em`;
+  modalidade, situacao, observacoes, ativo, inativado_em, motivo_inativacao,
+  (SELECT u.nome FROM usuarios u WHERE u.id = veiculos.inativado_por) AS inativado_por_nome,
+  criado_em, atualizado_em`;
 
 router.use(authenticate);
 
-/** GET /api/veiculos — lista os veículos ativos com busca e filtros. */
+/** GET /api/veiculos — lista os veículos com busca e filtros (ativos, por padrão, ou inativos). */
 router.get('/', authorize('veiculos:consultar'), validate(listarSchema, 'query'),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const { busca, situacao, tipo, modalidade } = req.query as Record<string, string | undefined>;
-      const filtros: string[] = ['ativo = TRUE'];
-      const params: unknown[] = [];
+      const { ativo } = req.query as unknown as { ativo: boolean };
+      const params: unknown[] = [ativo];
+      const filtros: string[] = ['ativo = $1'];
 
       if (busca) {
         params.push(`%${busca.replace(/[%_\\]/g, '\\$&')}%`);
@@ -228,6 +236,61 @@ router.patch('/:id/situacao', authorize('veiculos:gerenciar'), validate(idSchema
     }
   });
 
+/**
+ * PATCH /api/veiculos/:id/inativacao — retira o veículo da operação sem apagar o histórico (Sprint 04).
+ * O veículo deixa de aparecer nas listas, nos indicadores e na disponibilidade, mas o histórico de
+ * utilização continua consultável. Não é permitido inativar veículo com reserva ou empréstimo em aberto.
+ */
+router.patch('/:id/inativacao', authorize('veiculos:gerenciar'), validate(idSchema, 'params'), validate(inativarSchema),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const veiculo = await transaction(async (client) => {
+        // O bloqueio do veículo impede que uma reserva seja registrada ao mesmo tempo
+        const { rows } = await client.query<{ id: string; placa: string; ativo: boolean }>(
+          'SELECT id, placa, ativo FROM veiculos WHERE id = $1 FOR UPDATE', [req.params.id]
+        );
+        const atual = rows[0];
+        if (!atual) throw new AppError(404, 'Veículo não encontrado.');
+        if (!atual.ativo) throw new AppError(409, 'O veículo já está inativo.');
+        const { rows: abertas } = await client.query<{ total: string }>(
+          `SELECT COUNT(*) AS total FROM reservas WHERE veiculo_id = $1 AND status IN ('agendada', 'em_uso')`, [atual.id]
+        );
+        const total = Number(abertas[0].total);
+        if (total) {
+          throw new AppError(409, `O veículo ${atual.placa} possui ${total} reserva(s) ou empréstimo(s) em aberto. `
+            + 'Cancele as reservas ou registre a devolução antes de inativar o cadastro.');
+        }
+        const { rows: atualizado } = await client.query(
+          `UPDATE veiculos SET ativo = FALSE, inativado_por = $1, motivo_inativacao = $2, atualizado_por = $1
+            WHERE id = $3 RETURNING ${COLUNAS}`,
+          [req.usuario!.id, req.body.motivo, atual.id]
+        );
+        return atualizado[0];
+      });
+      res.json({ success: true, data: veiculo });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+/** PATCH /api/veiculos/:id/reativacao — devolve à operação um veículo inativado. */
+router.patch('/:id/reativacao', authorize('veiculos:gerenciar'), validate(idSchema, 'params'),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const { rows } = await query<{ ativo: boolean }>('SELECT ativo FROM veiculos WHERE id = $1', [req.params.id]);
+      if (!rows[0]) throw new AppError(404, 'Veículo não encontrado.');
+      if (rows[0].ativo) throw new AppError(409, 'O veículo já está ativo.');
+      const { rows: atualizado } = await query(
+        `UPDATE veiculos SET ativo = TRUE, atualizado_por = $1 WHERE id = $2 AND ativo = FALSE RETURNING ${COLUNAS}`,
+        [req.usuario!.id, req.params.id]
+      );
+      if (!atualizado[0]) throw new AppError(409, 'O veículo já está ativo.');
+      res.json({ success: true, data: atualizado[0] });
+    } catch (error) {
+      next(error);
+    }
+  });
+
 interface VeiculoAtual { id: string; quilometragem: number; situacao: string; modalidade: string }
 
 async function buscarAtivo(id: string) {
@@ -266,16 +329,23 @@ async function validarMudancaSituacao(atual: VeiculoAtual, nova: string, modalid
   }
 }
 
-/** Retorna mensagens claras quando placa ou código já pertencem a outro veículo. */
+/**
+ * Retorna mensagens claras quando placa ou código já pertencem a outro veículo.
+ * Quando o outro cadastro está inativo, orienta a reativá-lo em vez de duplicar o veículo.
+ */
 async function garantirUnicidade(placaInformada?: string, codigo?: string, ignorarId?: string) {
-  if (placaInformada) {
-    const { rowCount } = await query('SELECT 1 FROM veiculos WHERE placa = $1 AND id <> COALESCE($2::uuid, gen_random_uuid())', [placaInformada, ignorarId ?? null]);
-    if (rowCount) throw new AppError(409, 'Já existe um veículo cadastrado com esta placa.');
-  }
-  if (codigo) {
-    const { rowCount } = await query('SELECT 1 FROM veiculos WHERE UPPER(codigo) = $1 AND id <> COALESCE($2::uuid, gen_random_uuid())', [codigo, ignorarId ?? null]);
-    if (rowCount) throw new AppError(409, 'Já existe um veículo cadastrado com este código.');
-  }
+  const conflito = async (condicao: string, valor: string, campo: string) => {
+    const { rows } = await query<{ ativo: boolean }>(
+      `SELECT ativo FROM veiculos WHERE ${condicao} AND id <> COALESCE($2::uuid, gen_random_uuid())`, [valor, ignorarId ?? null]
+    );
+    if (!rows[0]) return;
+    if (!rows[0].ativo) {
+      throw new AppError(409, `Já existe um veículo inativo com ${campo}. Reative o cadastro em vez de cadastrar outro.`);
+    }
+    throw new AppError(409, `Já existe um veículo cadastrado com ${campo}.`);
+  };
+  if (placaInformada) await conflito('placa = $1', placaInformada, 'esta placa');
+  if (codigo) await conflito('UPPER(codigo) = $1', codigo, 'este código');
 }
 
 export default router;

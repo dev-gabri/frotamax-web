@@ -1,6 +1,6 @@
 import { NextFunction, Response, Router } from 'express';
 import Joi from 'joi';
-import { query } from '../db/pool';
+import { query, transaction } from '../db/pool';
 import { authenticate } from '../middleware/auth';
 import { authorize } from '../middleware/authorize';
 import { AppError } from '../middleware/errorHandler';
@@ -28,6 +28,7 @@ const camposCondutor = {
   liberado_pool: Joi.boolean().label('Liberado para o POOL'),
   ativo: Joi.boolean().label('Ativo'),
   observacoes: Joi.string().trim().max(500).allow('', null).label('Observações'),
+  motivo_inativacao: Joi.string().trim().min(5).max(300).label('Motivo da inativação'),
 };
 
 const criarSchema = Joi.object({
@@ -38,9 +39,14 @@ const criarSchema = Joi.object({
   cnh_validade: camposCondutor.cnh_validade.required(),
   liberado_pool: camposCondutor.liberado_pool.default(false),
   ativo: Joi.forbidden(),
+  motivo_inativacao: Joi.forbidden(),
 }).messages(mensagens);
 
-const atualizarSchema = Joi.object(camposCondutor).min(1).messages(mensagens);
+/** O motivo só pode acompanhar a inativação (ativo: false). */
+const atualizarSchema = Joi.object({
+  ...camposCondutor,
+  motivo_inativacao: camposCondutor.motivo_inativacao.when('ativo', { is: false, then: Joi.optional(), otherwise: Joi.forbidden() }),
+}).min(1).messages({ ...mensagens, 'any.unknown': 'O campo {#label} só pode ser informado na inativação do cadastro.' });
 
 const idSchema = Joi.object({
   id: Joi.string().guid({ version: ['uuidv4'] }).required().label('Identificador'),
@@ -63,7 +69,9 @@ const SITUACAO_CNH_SQL = `CASE
     ELSE 'valida' END`;
 
 const COLUNAS = `id, nome, matricula, cnh_categoria, cnh_validade, ${SITUACAO_CNH_SQL} AS situacao_cnh,
-  telefone, liberado_pool, ativo, observacoes, criado_em, atualizado_em`;
+  telefone, liberado_pool, ativo, inativado_em, motivo_inativacao,
+  (SELECT u.nome FROM usuarios u WHERE u.id = condutores.inativado_por) AS inativado_por_nome,
+  observacoes, criado_em, atualizado_em`;
 
 router.use(authenticate);
 
@@ -166,37 +174,48 @@ router.post('/', authorize('condutores:gerenciar'), validate(criarSchema),
     }
   });
 
-/** PUT /api/condutores/:id — atualiza um condutor (inclui liberação para o POOL e inativação). */
+/** PUT /api/condutores/:id — atualiza um condutor (inclui liberação para o POOL, inativação e reativação). */
 router.put('/:id', authorize('condutores:gerenciar'), validate(idSchema, 'params'), validate(atualizarSchema),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
-      const { rows: atuais } = await query<{ id: string }>('SELECT id FROM condutores WHERE id = $1', [req.params.id]);
-      if (!atuais[0]) throw new AppError(404, 'Condutor não encontrado.');
       const dados = { ...req.body } as Record<string, unknown>;
-
       if (dados.matricula) await garantirMatriculaUnica(dados.matricula as string, req.params.id);
       if (dados.cnh_validade) dados.cnh_validade = dataISO(dados.cnh_validade as Date);
 
-      // Integridade: não retirar a liberação nem inativar quem tem reserva ou empréstimo em andamento
-      if (dados.liberado_pool === false || dados.ativo === false) {
-        const ativas = await reservasAtivas(req.params.id);
-        if (ativas) {
-          throw new AppError(409, `O condutor possui ${ativas} reserva(s) ou empréstimo(s) em aberto. `
-            + 'Cancele as reservas ou registre a devolução antes de alterar a liberação ou inativar o cadastro.');
+      const condutor = await transaction(async (client) => {
+        // O bloqueio impede que uma reserva seja registrada para o condutor durante a inativação
+        const { rows: atuais } = await client.query<{ id: string; ativo: boolean }>(
+          'SELECT id, ativo FROM condutores WHERE id = $1 FOR UPDATE', [req.params.id]
+        );
+        if (!atuais[0]) throw new AppError(404, 'Condutor não encontrado.');
+
+        // Integridade: não retirar a liberação nem inativar quem tem reserva ou empréstimo em andamento
+        if (dados.liberado_pool === false || dados.ativo === false) {
+          const { rows } = await client.query<{ total: string }>(
+            `SELECT COUNT(*) AS total FROM reservas WHERE condutor_id = $1 AND status IN ('agendada', 'em_uso')`, [req.params.id]
+          );
+          const ativas = Number(rows[0].total);
+          if (ativas) {
+            throw new AppError(409, `O condutor possui ${ativas} reserva(s) ou empréstimo(s) em aberto. `
+              + 'Cancele as reservas ou registre a devolução antes de alterar a liberação ou inativar o cadastro.');
+          }
         }
-      }
+        // Responsável pela inativação (a data é registrada pelo banco)
+        if (dados.ativo === false && atuais[0].ativo) dados.inativado_por = req.usuario!.id;
 
-      const campos = Object.keys(dados);
-      const sets = campos.map((c, i) => `${c} = $${i + 1}`);
-      const valores = campos.map((c) => (['telefone', 'observacoes'].includes(c) ? dados[c] || null : dados[c]));
-      valores.push(req.usuario!.id, req.params.id);
+        const campos = Object.keys(dados);
+        const sets = campos.map((c, i) => `${c} = $${i + 1}`);
+        const valores = campos.map((c) => (['telefone', 'observacoes'].includes(c) ? dados[c] || null : dados[c]));
+        valores.push(req.usuario!.id, req.params.id);
 
-      const { rows } = await query(
-        `UPDATE condutores SET ${sets.join(', ')}, atualizado_por = $${valores.length - 1}
-         WHERE id = $${valores.length} RETURNING ${COLUNAS}`,
-        valores
-      );
-      res.json({ success: true, data: rows[0] });
+        const { rows } = await client.query(
+          `UPDATE condutores SET ${sets.join(', ')}, atualizado_por = $${valores.length - 1}
+           WHERE id = $${valores.length} RETURNING ${COLUNAS}`,
+          valores
+        );
+        return rows[0];
+      });
+      res.json({ success: true, data: condutor });
     } catch (error) {
       next(error);
     }
@@ -205,14 +224,6 @@ router.put('/:id', authorize('condutores:gerenciar'), validate(idSchema, 'params
 /** Converte a data validada pelo Joi para AAAA-MM-DD, sem depender do fuso do servidor. */
 function dataISO(data: Date): string {
   return data.toISOString().slice(0, 10);
-}
-
-async function reservasAtivas(condutorId: string): Promise<number> {
-  const { rows } = await query<{ total: string }>(
-    `SELECT COUNT(*) AS total FROM reservas WHERE condutor_id = $1 AND status IN ('agendada', 'em_uso')`,
-    [condutorId]
-  );
-  return Number(rows[0].total);
 }
 
 async function garantirMatriculaUnica(matricula: string, ignorarId?: string) {

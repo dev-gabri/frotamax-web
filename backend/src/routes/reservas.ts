@@ -514,7 +514,8 @@ async function validarVeiculo(client: PoolClient, veiculoId: string, retiradaIme
 
 async function validarCondutor(client: PoolClient, condutorId: string, fim: Date) {
   const { rows } = await client.query<{ nome: string; ativo: boolean; liberado_pool: boolean; cnh_validade: string }>(
-    'SELECT nome, ativo, liberado_pool, cnh_validade FROM condutores WHERE id = $1',
+    // FOR SHARE: aguarda uma inativação em andamento do mesmo condutor (Sprint 04)
+    'SELECT nome, ativo, liberado_pool, cnh_validade FROM condutores WHERE id = $1 FOR SHARE',
     [condutorId]
   );
   const c = rows[0];
