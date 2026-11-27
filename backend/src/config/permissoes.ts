@@ -10,6 +10,10 @@ export const PERMISSOES = {
   'veiculos:consultar': ['admin', 'gestor_frota', 'visualizador'],
   /** Cadastrar, editar e alterar a situação de veículos */
   'veiculos:gerenciar': ['admin', 'gestor_frota'],
+  /** Listar e consultar condutores */
+  'condutores:consultar': ['admin', 'gestor_frota', 'visualizador'],
+  /** Cadastrar e editar condutores, incluindo a liberação para o POOL */
+  'condutores:gerenciar': ['admin', 'gestor_frota'],
 } as const satisfies Record<string, readonly Perfil[]>;
 
 export type Permissao = keyof typeof PERMISSOES;

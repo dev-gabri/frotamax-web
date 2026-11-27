@@ -7,6 +7,7 @@ import { requestLogger } from './middleware/requestLogger';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 import authRoutes from './routes/auth';
 import veiculosRoutes from './routes/veiculos';
+import condutoresRoutes from './routes/condutores';
 
 /**
  * Monta a aplicação Express sem iniciar o servidor,
@@ -31,6 +32,7 @@ export function createApp() {
 
   app.use('/api/auth', authRoutes);
   app.use('/api/veiculos', veiculosRoutes);
+  app.use('/api/condutores', condutoresRoutes);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

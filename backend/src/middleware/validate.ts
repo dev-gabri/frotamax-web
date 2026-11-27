@@ -40,4 +40,7 @@ export const mensagens: Joi.LanguageMessages = {
   'any.only': 'O campo {#label} possui um valor não permitido.',
   'object.min': 'Informe ao menos um campo para atualizar.',
   'string.guid': 'O identificador informado é inválido.',
+  'date.base': 'O campo {#label} deve conter uma data válida.',
+  'date.format': 'O campo {#label} deve conter uma data válida.',
+  'boolean.base': 'O campo {#label} deve ser verdadeiro ou falso.',
 };
