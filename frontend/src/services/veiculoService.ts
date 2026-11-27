@@ -12,4 +12,6 @@ export const veiculoService = {
   criar: (dados: VeiculoInput) => apiService.post<Veiculo>('/veiculos', dados),
   atualizar: (id: string, dados: Partial<VeiculoInput>) => apiService.put<Veiculo>(`/veiculos/${id}`, dados),
   alterarSituacao: (id: string, situacao: Situacao) => apiService.patch<Veiculo>(`/veiculos/${id}/situacao`, { situacao }),
+  inativar: (id: string, motivo: string) => apiService.patch<Veiculo>(`/veiculos/${id}/inativacao`, { motivo }),
+  reativar: (id: string) => apiService.patch<Veiculo>(`/veiculos/${id}/reativacao`, {}),
 };

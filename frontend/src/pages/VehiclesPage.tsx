@@ -8,6 +8,7 @@ import {
   Card,
   CardActionArea,
   CardContent,
+  Chip,
   Divider,
   Grid2 as Grid,
   IconButton,
@@ -31,6 +32,7 @@ import {
 } from '@mui/material';
 import {
   Add,
+  Archive,
   Block,
   Build,
   CheckCircle,
@@ -41,6 +43,7 @@ import {
   MoreVert,
   Search,
   SwapHoriz,
+  Unarchive,
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import { veiculoService } from '../services/veiculoService';
@@ -58,12 +61,24 @@ import SituacaoChip from '../components/veiculos/SituacaoChip';
 import VeiculoFormDialog from '../components/veiculos/VeiculoFormDialog';
 import Indicador from '../components/Indicador';
 import HistoricoDialog, { AlvoHistorico } from '../components/reservas/HistoricoDialog';
+import InativarVeiculoDialog from '../components/veiculos/InativarVeiculoDialog';
+import { dataHora } from '../utils/datas';
 
 const km = (n: number) => `${n.toLocaleString('pt-BR')}\u00A0km`;
 
+const FILTROS_INICIAIS: FiltrosVeiculos = { busca: '', situacao: '', tipo: '', modalidade: '', ativo: 'true' };
+
+/** Chip do cadastro inativo, com data e motivo da inativação na dica. */
+const InativoChip: React.FC<{ v: Veiculo }> = ({ v }) => (
+  <Tooltip title={`Inativado${v.inativado_em ? ` em ${dataHora(v.inativado_em)}` : ''}${v.inativado_por_nome ? ` por ${v.inativado_por_nome}` : ''}${v.motivo_inativacao ? `: ${v.motivo_inativacao}` : ''}`}>
+    <Chip size="small" variant="outlined" icon={<Archive />} label="Inativo" sx={{ fontWeight: 600 }} />
+  </Tooltip>
+);
+
 /**
  * Gestão de veículos (card S1-05): indicadores, busca, filtros, listagem,
- * cadastro, edição e alteração da situação. Todas as operações passam pela API.
+ * cadastro, edição e alteração da situação; inativação e reativação (Sprint 04).
+ * Todas as operações passam pela API.
  */
 const VehiclesPage: React.FC = () => {
   const theme = useTheme();
@@ -74,12 +89,14 @@ const VehiclesPage: React.FC = () => {
   const queryClient = useQueryClient();
 
   const [buscaDigitada, setBuscaDigitada] = useState('');
-  const [filtros, setFiltros] = useState<FiltrosVeiculos>({ busca: '', situacao: '', tipo: '', modalidade: '' });
+  const [filtros, setFiltros] = useState<FiltrosVeiculos>(FILTROS_INICIAIS);
   const [formAberto, setFormAberto] = useState(false);
   const [editando, setEditando] = useState<Veiculo | null>(null);
   const [erroForm, setErroForm] = useState<ApiError | null>(null);
   const [menu, setMenu] = useState<{ anchor: HTMLElement; veiculo: Veiculo } | null>(null);
   const [historico, setHistorico] = useState<AlvoHistorico | null>(null);
+  const [inativando, setInativando] = useState<Veiculo | null>(null);
+  const [erroInativacao, setErroInativacao] = useState<ApiError | null>(null);
 
   // Aguarda o usuário parar de digitar antes de consultar a API
   useEffect(() => {
@@ -114,14 +131,33 @@ const VehiclesPage: React.FC = () => {
     onError: (error: ApiError) => enqueueSnackbar(error.message, { variant: 'error' }),
   });
 
+  const inativar = useMutation({
+    mutationFn: ({ id, motivo }: { id: string; motivo: string }) => veiculoService.inativar(id, motivo),
+    onSuccess: (v) => {
+      enqueueSnackbar(`Veículo ${v.placa} inativado. O histórico de utilização continua disponível.`, { variant: 'success' });
+      setInativando(null);
+      atualizarDados();
+    },
+    onError: (error: ApiError) => setErroInativacao(error),
+  });
+
+  const reativar = useMutation({
+    mutationFn: (id: string) => veiculoService.reativar(id),
+    onSuccess: (v) => {
+      enqueueSnackbar(`Veículo ${v.placa} reativado.`, { variant: 'success' });
+      atualizarDados();
+    },
+    onError: (error: ApiError) => enqueueSnackbar(error.message, { variant: 'error' }),
+  });
+
   const abrirCadastro = () => { setEditando(null); setErroForm(null); setFormAberto(true); };
   const abrirEdicao = (v: Veiculo) => { setEditando(v); setErroForm(null); setFormAberto(true); };
 
   const filtrosAtivos = useMemo(
-    () => !!(filtros.busca || filtros.situacao || filtros.tipo || filtros.modalidade),
+    () => !!(filtros.busca || filtros.situacao || filtros.tipo || filtros.modalidade || filtros.ativo === 'false'),
     [filtros]
   );
-  const limparFiltros = () => { setBuscaDigitada(''); setFiltros({ busca: '', situacao: '', tipo: '', modalidade: '' }); };
+  const limparFiltros = () => { setBuscaDigitada(''); setFiltros(FILTROS_INICIAIS); };
 
   const veiculos = lista.data ?? [];
   const r = resumo.data;
@@ -136,7 +172,20 @@ const VehiclesPage: React.FC = () => {
           <History />
         </IconButton>
       </Tooltip>
-      {podeGerenciar && (
+      {podeGerenciar && !v.ativo && (
+        <Tooltip title="Reativar cadastro">
+          <span>
+            <IconButton
+              aria-label={`Reativar o veículo ${v.placa}`}
+              disabled={reativar.isPending}
+              onClick={(e) => { e.stopPropagation(); reativar.mutate(v.id); }}
+            >
+              <Unarchive />
+            </IconButton>
+          </span>
+        </Tooltip>
+      )}
+      {podeGerenciar && v.ativo && (
         <Tooltip title="Mais ações">
           <IconButton aria-label={`Ações do veículo ${v.placa}`} onClick={(e) => { e.stopPropagation(); setMenu({ anchor: e.currentTarget, veiculo: v }); }}>
             <MoreVert />
@@ -173,7 +222,7 @@ const VehiclesPage: React.FC = () => {
       <Card sx={{ mb: 2 }}>
         <CardContent>
           <Grid container spacing={2} alignItems="center">
-            <Grid size={{ xs: 12, md: 4 }}>
+            <Grid size={{ xs: 12, md: 3 }}>
               <TextField
                 label="Buscar"
                 placeholder="Placa, código, marca, modelo ou unidade"
@@ -182,22 +231,28 @@ const VehiclesPage: React.FC = () => {
                 InputProps={{ startAdornment: <InputAdornment position="start"><Search /></InputAdornment> }}
               />
             </Grid>
-            <Grid size={{ xs: 12, sm: 4, md: 2.5 }}>
+            <Grid size={{ xs: 12, sm: 6, md: 2 }}>
               <TextField select label="Situação" value={filtros.situacao} onChange={(e) => setFiltros((f) => ({ ...f, situacao: e.target.value as Situacao }))}>
                 <MenuItem value="">Todas</MenuItem>
                 {Object.entries(SITUACAO_LABELS).map(([v, l]) => <MenuItem key={v} value={v}>{l}</MenuItem>)}
               </TextField>
             </Grid>
-            <Grid size={{ xs: 12, sm: 4, md: 2.5 }}>
+            <Grid size={{ xs: 12, sm: 6, md: 2 }}>
               <TextField select label="Tipo" value={filtros.tipo} onChange={(e) => setFiltros((f) => ({ ...f, tipo: e.target.value as FiltrosVeiculos['tipo'] }))}>
                 <MenuItem value="">Todos</MenuItem>
                 {Object.entries(TIPO_LABELS).map(([v, l]) => <MenuItem key={v} value={v}>{l}</MenuItem>)}
               </TextField>
             </Grid>
-            <Grid size={{ xs: 12, sm: 4, md: 2 }}>
+            <Grid size={{ xs: 12, sm: 6, md: 2 }}>
               <TextField select label="Modalidade" value={filtros.modalidade} onChange={(e) => setFiltros((f) => ({ ...f, modalidade: e.target.value as FiltrosVeiculos['modalidade'] }))}>
                 <MenuItem value="">Todas</MenuItem>
                 {Object.entries(MODALIDADE_LABELS).map(([v, l]) => <MenuItem key={v} value={v}>{l}</MenuItem>)}
+              </TextField>
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6, md: 2 }}>
+              <TextField select label="Cadastro" value={filtros.ativo} onChange={(e) => setFiltros((f) => ({ ...f, ativo: e.target.value as 'true' | 'false' }))}>
+                <MenuItem value="true">Ativos</MenuItem>
+                <MenuItem value="false">Inativos</MenuItem>
               </TextField>
             </Grid>
             <Grid size={{ xs: 12, md: 1 }} sx={{ textAlign: { md: 'right' } }}>
@@ -228,14 +283,16 @@ const VehiclesPage: React.FC = () => {
 
       {lista.isSuccess && veiculos.length === 0 && (
         <Alert severity="info">
-          {filtrosAtivos ? 'Nenhum veículo encontrado com os filtros informados.' : 'Nenhum veículo cadastrado até o momento.'}
+          {filtros.ativo === 'false' && !filtros.busca && !filtros.situacao && !filtros.tipo && !filtros.modalidade
+            ? 'Nenhum veículo inativo.'
+            : filtrosAtivos ? 'Nenhum veículo encontrado com os filtros informados.' : 'Nenhum veículo cadastrado até o momento.'}
         </Alert>
       )}
 
       {lista.isSuccess && veiculos.length > 0 && !telaPequena && (
         <Card>
           <Box px={2} py={1.5}>
-            <Typography variant="subtitle1" fontWeight={600}>Lista de veículos</Typography>
+            <Typography variant="subtitle1" fontWeight={600}>{filtros.ativo === 'false' ? 'Veículos inativos' : 'Lista de veículos'}</Typography>
             <Typography variant="caption" color="text.secondary">{veiculos.length} veículo(s) exibido(s)</Typography>
           </Box>
           <Divider />
@@ -264,7 +321,7 @@ const VehiclesPage: React.FC = () => {
                     <TableCell>{v.unidade}</TableCell>
                     <TableCell align="right">{km(v.quilometragem)}</TableCell>
                     <TableCell>{v.modalidade === 'pool' ? 'Pool' : 'Atribuído'}</TableCell>
-                    <TableCell><SituacaoChip situacao={v.situacao} /></TableCell>
+                    <TableCell>{v.ativo ? <SituacaoChip situacao={v.situacao} /> : <InativoChip v={v} />}</TableCell>
                     <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>{acoes(v)}</TableCell>
                   </TableRow>
                 ))}
@@ -280,16 +337,19 @@ const VehiclesPage: React.FC = () => {
           <Typography variant="caption" color="text.secondary">{veiculos.length} veículo(s) exibido(s)</Typography>
           {veiculos.map((v) => (
             <Card key={v.id}>
-              <CardActionArea component="div" onClick={() => podeGerenciar && abrirEdicao(v)} disabled={!podeGerenciar}>
+              <CardActionArea component="div" onClick={() => podeGerenciar && v.ativo && abrirEdicao(v)} disabled={!podeGerenciar || !v.ativo}>
                 <CardContent>
                   <Stack direction="row" justifyContent="space-between" alignItems="flex-start" gap={1}>
                     <Box>
                       <Typography sx={{ fontWeight: 700, fontFamily: 'monospace', fontSize: 17 }}>{v.placa}</Typography>
                       <Typography variant="body2">{v.marca} {v.modelo} · {TIPO_LABELS[v.tipo]}</Typography>
                       <Typography variant="caption" color="text.secondary">{v.codigo} · {v.unidade} · {km(v.quilometragem)}</Typography>
+                      {!v.ativo && v.motivo_inativacao && (
+                        <Typography variant="caption" color="text.secondary" display="block">Motivo: {v.motivo_inativacao}</Typography>
+                      )}
                     </Box>
                     <Stack alignItems="flex-end" gap={0.5}>
-                      <SituacaoChip situacao={v.situacao} />
+                      {v.ativo ? <SituacaoChip situacao={v.situacao} /> : <InativoChip v={v} />}
                       {acoes(v)}
                     </Stack>
                   </Stack>
@@ -323,9 +383,21 @@ const VehiclesPage: React.FC = () => {
             {SITUACAO_LABELS[s]}
           </MenuItem>
         ))}
+        <Divider />
+        <MenuItem onClick={() => { if (menu) { setErroInativacao(null); setInativando(menu.veiculo); } setMenu(null); }} sx={{ color: 'error.main' }}>
+          <ListItemIcon><Archive fontSize="small" color="error" /></ListItemIcon>Inativar cadastro
+        </MenuItem>
       </Menu>
 
       <HistoricoDialog alvo={historico} onClose={() => setHistorico(null)} />
+
+      <InativarVeiculoDialog
+        veiculo={inativando}
+        salvando={inativar.isPending}
+        erroApi={erroInativacao}
+        onClose={() => setInativando(null)}
+        onConfirm={(motivo) => { if (inativando) { setErroInativacao(null); inativar.mutate({ id: inativando.id, motivo }); } }}
+      />
 
       <VeiculoFormDialog
         open={formAberto}

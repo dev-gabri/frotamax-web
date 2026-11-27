@@ -73,11 +73,17 @@ export interface Veiculo {
   modalidade: Modalidade;
   situacao: Situacao;
   observacoes: string | null;
+  /** Inativação (Sprint 04): o veículo sai da operação, mas o histórico é preservado. */
+  ativo: boolean;
+  inativado_em: string | null;
+  motivo_inativacao: string | null;
+  inativado_por_nome: string | null;
   criado_em: string;
   atualizado_em: string;
 }
 
-export type VeiculoInput = Omit<Veiculo, 'id' | 'criado_em' | 'atualizado_em'>;
+export type VeiculoInput = Omit<Veiculo,
+  'id' | 'criado_em' | 'atualizado_em' | 'ativo' | 'inativado_em' | 'motivo_inativacao' | 'inativado_por_nome'>;
 
 export interface ResumoVeiculos {
   total: number;
@@ -92,6 +98,8 @@ export interface FiltrosVeiculos {
   situacao?: Situacao | '';
   tipo?: TipoVeiculo | '';
   modalidade?: Modalidade | '';
+  /** Cadastros ativos (padrão) ou inativos */
+  ativo?: 'true' | 'false';
 }
 
 // ------------------------------------------------------------------ Condutores (Sprint 02)
@@ -117,6 +125,10 @@ export interface Condutor {
   telefone: string | null;
   liberado_pool: boolean;
   ativo: boolean;
+  /** Inativação em vigor (Sprint 04) */
+  inativado_em: string | null;
+  motivo_inativacao: string | null;
+  inativado_por_nome: string | null;
   observacoes: string | null;
   criado_em: string;
   atualizado_em: string;
@@ -131,6 +143,8 @@ export interface CondutorInput {
   liberado_pool: boolean;
   observacoes: string | null;
   ativo?: boolean;
+  /** Só acompanha a inativação */
+  motivo_inativacao?: string;
 }
 
 export interface ResumoCondutores {

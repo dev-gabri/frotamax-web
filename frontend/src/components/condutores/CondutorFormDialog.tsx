@@ -19,6 +19,7 @@ import {
 } from '@mui/material';
 import { CATEGORIAS_CNH, CategoriaCnh, Condutor, CondutorInput } from '../../types';
 import { ApiError } from '../../services/apiService';
+import { dataHora } from '../../utils/datas';
 
 interface Props {
   open: boolean;
@@ -38,10 +39,12 @@ interface Form {
   observacoes: string;
   liberado_pool: boolean;
   ativo: boolean;
+  motivo_inativacao: string;
 }
 
 const VAZIO: Form = {
   nome: '', matricula: '', cnh_categoria: 'B', cnh_validade: '', telefone: '', observacoes: '', liberado_pool: false, ativo: true,
+  motivo_inativacao: '',
 };
 
 const hojeISO = () => {
@@ -59,6 +62,8 @@ const CondutorFormDialog: React.FC<Props> = ({ open, condutor, salvando, erroApi
   const [erros, setErros] = useState<Partial<Record<keyof Form, string>>>({});
   const theme = useTheme();
   const telaPequena = useMediaQuery(theme.breakpoints.down('sm'));
+  /** O cadastro estava ativo e o usuário desligou a opção "Cadastro ativo" (Sprint 04) */
+  const inativando = !!condutor?.ativo && !form.ativo;
 
   useEffect(() => {
     if (!open) return;
@@ -68,7 +73,7 @@ const CondutorFormDialog: React.FC<Props> = ({ open, condutor, salvando, erroApi
         ? {
             nome: condutor.nome, matricula: condutor.matricula, cnh_categoria: condutor.cnh_categoria,
             cnh_validade: condutor.cnh_validade, telefone: condutor.telefone ?? '', observacoes: condutor.observacoes ?? '',
-            liberado_pool: condutor.liberado_pool, ativo: condutor.ativo,
+            liberado_pool: condutor.liberado_pool, ativo: condutor.ativo, motivo_inativacao: '',
           }
         : VAZIO
     );
@@ -88,6 +93,9 @@ const CondutorFormDialog: React.FC<Props> = ({ open, condutor, salvando, erroApi
     if (!form.cnh_categoria) e.cnh_categoria = 'Selecione a categoria.';
     if (!form.cnh_validade) e.cnh_validade = 'Informe a validade da CNH.';
     if (form.telefone.trim() && !/^[0-9()+\s-]{8,20}$/.test(form.telefone.trim())) e.telefone = 'Use apenas números, espaços, parênteses, + e hífen.';
+    if (inativando && form.motivo_inativacao.trim() && form.motivo_inativacao.trim().length < 5) {
+      e.motivo_inativacao = 'Descreva o motivo com pelo menos 5 caracteres ou deixe em branco.';
+    }
     setErros(e);
     return Object.keys(e).length === 0;
   };
@@ -104,6 +112,7 @@ const CondutorFormDialog: React.FC<Props> = ({ open, condutor, salvando, erroApi
       liberado_pool: form.liberado_pool,
       observacoes: form.observacoes.trim() || null,
       ...(condutor && { ativo: form.ativo }),
+      ...(inativando && form.motivo_inativacao.trim() && { motivo_inativacao: form.motivo_inativacao.trim() }),
     });
   };
 
@@ -167,6 +176,20 @@ const CondutorFormDialog: React.FC<Props> = ({ open, condutor, salvando, erroApi
                   control={<Switch checked={form.ativo} onChange={(e) => setForm((f) => ({ ...f, ativo: e.target.checked }))} disabled={salvando} />}
                   label={form.ativo ? 'Cadastro ativo' : 'Cadastro inativo'}
                 />
+                {!condutor.ativo && condutor.inativado_em && (
+                  <Typography variant="caption" color="text.secondary" display="block">
+                    Inativado em {dataHora(condutor.inativado_em)}{condutor.inativado_por_nome ? ` por ${condutor.inativado_por_nome}` : ''}
+                    {condutor.motivo_inativacao ? `. Motivo: ${condutor.motivo_inativacao}` : ''}
+                  </Typography>
+                )}
+              </Grid>
+            )}
+            {inativando && (
+              <Grid size={12}>
+                {campo('motivo_inativacao', 'Motivo da inativação', {
+                  multiline: true, minRows: 2, inputProps: { maxLength: 300 },
+                  helperText: 'Opcional. Fica registrado com a data e o responsável; o histórico do condutor é preservado.',
+                })}
               </Grid>
             )}
             <Grid size={12}>{campo('observacoes', 'Observações', { multiline: true, minRows: 2, inputProps: { maxLength: 500 } })}</Grid>
