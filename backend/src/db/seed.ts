@@ -42,6 +42,15 @@ const RESERVAS = [
   ['reserva', 'QWE3R45', 'M-1006', '3 days 7 hours 30 minutes', '3 days 12 hours', 'Entrega de documentos na Unidade Comercial'],
 ] as const;
 
+// Movimentações já encerradas, para que o histórico de utilização (Sprint 03) tenha exemplos.
+// [tipo, placa, matrícula, dias atrás, horas previstas, horas reais, km percorridos, finalidade, observação da devolução, situação]
+const HISTORICO = [
+  ['emprestimo', 'ABC1D23', 'M-1003', 3, 5, 5, 58, 'Coleta de amostras no laboratório', 'Pneu dianteiro com pressão baixa; calibrado na chegada.', 'concluida'],
+  ['reserva', 'ZXC8V90', 'M-1006', 5, 4, 0, 0, 'Entrega de malotes', 'Visita remarcada pela unidade.', 'cancelada'],
+  ['reserva', 'QWE3R45', 'M-1001', 9, 6, 6, 74, 'Treinamento na Unidade Comercial', null, 'concluida'],
+  ['emprestimo', 'ABC1D23', 'M-1002', 12, 8, 9, 186, 'Visita a cliente em Goiânia', 'Sem ocorrências.', 'concluida'],
+] as const;
+
 export async function seed() {
   const senha = process.env.SEED_SENHA;
   if (!senha || senha.length < 8) {
@@ -88,9 +97,10 @@ export async function seed() {
     for (const [tipo, placa, matricula, inicio, fim, finalidade] of RESERVAS) {
       const inicioSql = inicio === 'agora' ? `NOW() - INTERVAL '2 hours'` : local(`${hoje} + INTERVAL '${inicio}'`);
       const { rows } = await pool.query<{ id: string }>(
-        `INSERT INTO reservas (tipo, veiculo_id, condutor_id, inicio, fim_previsto, retirada_em, finalidade, status, criado_por, atualizado_por)
+        `INSERT INTO reservas (tipo, veiculo_id, condutor_id, inicio, fim_previsto, retirada_em, km_retirada, finalidade, status, criado_por, atualizado_por)
          SELECT $1::varchar, v.id, c.id, ${inicioSql}, ${fim === 'agora' ? `NOW() + INTERVAL '6 hours'` : local(`${hoje} + INTERVAL '${fim}'`)},
-                CASE WHEN $1::varchar = 'emprestimo' THEN ${inicioSql} END, $4,
+                CASE WHEN $1::varchar = 'emprestimo' THEN ${inicioSql} END,
+                CASE WHEN $1::varchar = 'emprestimo' THEN v.quilometragem END, $4,
                 CASE WHEN $1::varchar = 'emprestimo' THEN 'em_uso' ELSE 'agendada' END, $5, $5
            FROM veiculos v, condutores c
           WHERE v.placa = $2 AND UPPER(c.matricula) = $3
@@ -111,8 +121,58 @@ export async function seed() {
     }
   }
 
+  // Histórico fictício, inserido uma única vez (quando ainda não há nenhuma devolução registrada).
+  // A quilometragem é calculada de trás para frente a partir da atual de cada veículo, para ficar coerente.
+  const { rows: encerradas } = await pool.query<{ total: string }>(
+    `SELECT COUNT(*) AS total FROM reservas WHERE status = 'concluida'`
+  );
+  if (Number(encerradas[0].total) === 0) {
+    const kmAtual = new Map<string, number>();
+    for (const [tipo, placa, matricula, diasAtras, horasPrevistas, horasReais, kmPercorridos, finalidade, observacao, situacao] of HISTORICO) {
+      const { rows: vs } = await pool.query<{ quilometragem: number }>('SELECT quilometragem FROM veiculos WHERE placa = $1', [placa]);
+      if (!vs[0]) continue;
+      const kmDevolucao = kmAtual.get(placa) ?? vs[0].quilometragem;
+      const kmRetirada = kmDevolucao - kmPercorridos;
+      if (situacao === 'concluida') kmAtual.set(placa, kmRetirada - 35);
+      const inicio = `(date_trunc('day', NOW() AT TIME ZONE 'America/Sao_Paulo') - INTERVAL '${diasAtras} days' + INTERVAL '8 hours') AT TIME ZONE 'America/Sao_Paulo'`;
+      const concluida = situacao === 'concluida';
+      const { rows } = await pool.query<{ id: string }>(
+        `INSERT INTO reservas (tipo, veiculo_id, condutor_id, inicio, fim_previsto, retirada_em, devolvida_em, km_retirada,
+                               km_devolucao, observacao_devolucao, finalidade, status, motivo_cancelamento,
+                               criado_por, atualizado_por, devolvida_por)
+         SELECT $1::varchar, v.id, c.id, ${inicio}, ${inicio} + make_interval(hours => $4::int),
+                CASE WHEN $5::boolean THEN ${inicio} END,
+                CASE WHEN $5::boolean THEN ${inicio} + make_interval(hours => $6::int) END,
+                CASE WHEN $5::boolean THEN $7::int END, CASE WHEN $5::boolean THEN $8::int END,
+                CASE WHEN $5::boolean THEN $9::varchar END, $10, $11::varchar,
+                CASE WHEN $5::boolean THEN NULL ELSE $9::varchar END, $12, $12, CASE WHEN $5::boolean THEN $12::uuid END
+           FROM veiculos v, condutores c
+          WHERE v.placa = $2 AND UPPER(c.matricula) = $3
+         RETURNING id`,
+        [tipo, placa, matricula, horasPrevistas, concluida, horasReais, kmRetirada, kmDevolucao, observacao,
+          finalidade, situacao, gestorId]
+      );
+      if (!rows[0]) continue;
+      const eventos: [string, string | null, string][] = [['registro', 'Registro de demonstração.', '0 hours']];
+      if (concluida) {
+        eventos.push(['retirada', null, '0 hours']);
+        eventos.push(['devolucao', `Devolução com ${kmDevolucao.toLocaleString('pt-BR')} km.${observacao ? ` ${observacao}` : ''}`, `${horasReais} hours`]);
+      } else {
+        eventos.push(['cancelamento', observacao, '0 hours']);
+      }
+      for (const [evento, texto, deslocamento] of eventos) {
+        await pool.query(
+          `INSERT INTO reserva_eventos (reserva_id, evento, usuario_id, observacao, criado_em)
+           VALUES ($1, $2, $3, $4, ${inicio} + INTERVAL '${deslocamento}')`,
+          [rows[0].id, evento, gestorId, texto]
+        );
+      }
+    }
+  }
+
   console.log(`Dados fictícios carregados: ${USUARIOS.length} usuários, ${VEICULOS.length} veículos, `
-    + `${CONDUTORES.length} condutores e ${RESERVAS.length} reservas/empréstimos.`);
+    + `${CONDUTORES.length} condutores, ${RESERVAS.length} reservas/empréstimos em aberto e `
+    + `${HISTORICO.length} movimentações encerradas.`);
   console.log('Usuários de demonstração: admin@frotamax.local, gestor@frotamax.local, consulta@frotamax.local (senha definida em SEED_SENHA).');
 }
 
