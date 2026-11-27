@@ -4,7 +4,7 @@ import { query } from '../db/pool';
 import { authenticate } from '../middleware/auth';
 import { authorize } from '../middleware/authorize';
 import { AppError } from '../middleware/errorHandler';
-import { mensagens, validate } from '../middleware/validate';
+import { dataIso, mensagens, validate } from '../middleware/validate';
 import { AuthenticatedRequest } from '../types';
 import { FUSO_APLICACAO } from '../utils/datas';
 import { consultarHistorico, paginacao } from './reservas';
@@ -22,7 +22,7 @@ const camposCondutor = {
   matricula: Joi.string().trim().uppercase().max(20).pattern(/^[A-Z0-9.-]+$/).label('Matrícula')
     .messages({ 'string.pattern.base': 'A matrícula deve conter apenas letras, números, ponto e hífen.' }),
   cnh_categoria: Joi.string().trim().uppercase().valid(...CATEGORIAS_CNH).label('Categoria da CNH'),
-  cnh_validade: Joi.date().iso().label('Validade da CNH'),
+  cnh_validade: dataIso().label('Validade da CNH'),
   telefone: Joi.string().trim().max(20).pattern(/^[0-9()+\s-]{8,20}$/).allow('', null).label('Telefone')
     .messages({ 'string.pattern.base': 'O telefone deve conter apenas números, espaços, parênteses, + e hífen.' }),
   liberado_pool: Joi.boolean().label('Liberado para o POOL'),

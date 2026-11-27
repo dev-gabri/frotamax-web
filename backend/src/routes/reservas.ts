@@ -5,7 +5,7 @@ import { query, transaction } from '../db/pool';
 import { authenticate } from '../middleware/auth';
 import { authorize } from '../middleware/authorize';
 import { AppError } from '../middleware/errorHandler';
-import { mensagens, validate } from '../middleware/validate';
+import { dataIso, dataSimples, mensagens, validate } from '../middleware/validate';
 import { AuthenticatedRequest } from '../types';
 import { dataBR, dataHora, dataLocalISO, FUSO_APLICACAO } from '../utils/datas';
 
@@ -47,8 +47,8 @@ const criarSchema = Joi.object({
   tipo: Joi.string().valid(...TIPOS_RESERVA).required().label('Tipo'),
   veiculo_id: uuid.required().label('Veículo'),
   condutor_id: uuid.required().label('Condutor'),
-  inicio: Joi.date().iso().label('Início').when('tipo', { is: 'reserva', then: Joi.required(), otherwise: Joi.forbidden() }),
-  fim_previsto: Joi.date().iso().required().label('Previsão de devolução'),
+  inicio: dataIso().label('Início').when('tipo', { is: 'reserva', then: Joi.required(), otherwise: Joi.forbidden() }),
+  fim_previsto: dataIso().required().label('Previsão de devolução'),
   finalidade: Joi.string().trim().min(3).max(200).required().label('Finalidade'),
   observacoes: Joi.string().trim().max(500).allow('', null).label('Observações'),
 }).messages({ ...mensagens, 'any.unknown': 'O campo {#label} não deve ser informado para empréstimos (a retirada é imediata).' });
@@ -58,9 +58,6 @@ const cancelarSchema = Joi.object({
 }).messages(mensagens);
 
 const idSchema = Joi.object({ id: uuid.required().label('Identificador') }).messages(mensagens);
-
-const dataSimples = Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/)
-  .messages({ 'string.pattern.base': 'O campo {#label} deve conter uma data no formato AAAA-MM-DD.' });
 
 /** Paginação das consultas, para não carregar todo o histórico de uma vez (RNF10). */
 export const paginacao = {
@@ -74,13 +71,13 @@ const listarSchema = Joi.object({
   tipo: Joi.string().valid(...TIPOS_RESERVA).label('Tipo'),
   veiculo_id: uuid.label('Veículo'),
   condutor_id: uuid.label('Condutor'),
-  de: dataSimples.label('Data inicial'),
-  ate: dataSimples.label('Data final'),
+  de: dataSimples().label('Data inicial'),
+  ate: dataSimples().label('Data final'),
   ...paginacao,
 }).messages(mensagens);
 
 const devolucaoSchema = Joi.object({
-  devolvida_em: Joi.date().iso().label('Data e hora da devolução'),
+  devolvida_em: dataIso().label('Data e hora da devolução'),
   km_devolucao: Joi.number().integer().min(0).max(5_000_000).required().label('Quilometragem de chegada'),
   observacao: Joi.string().trim().max(500).allow('', null).label('Observação'),
   enviar_manutencao: Joi.boolean().default(false).label('Enviar para manutenção'),
@@ -88,8 +85,8 @@ const devolucaoSchema = Joi.object({
 
 const disponibilidadeSchema = Joi.object({
   tipo: Joi.string().valid(...TIPOS_RESERVA).default('reserva').label('Tipo'),
-  inicio: Joi.date().iso().label('Início').when('tipo', { is: 'reserva', then: Joi.required() }),
-  fim: Joi.date().iso().required().label('Previsão de devolução'),
+  inicio: dataIso().label('Início').when('tipo', { is: 'reserva', then: Joi.required() }),
+  fim: dataIso().required().label('Previsão de devolução'),
 }).messages(mensagens);
 
 /**

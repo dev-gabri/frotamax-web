@@ -24,6 +24,33 @@ export const validate = (schema: Joi.ObjectSchema, origem: Origem = 'body') =>
     next();
   };
 
+/**
+ * Confere se a data informada (AAAA-MM-DD, com ou sem horário) existe no calendário.
+ * O Joi aceita, por exemplo, 30/02 e o converte em 02/03 sem avisar (BUG-07).
+ */
+export function diaExiste(texto: string): boolean {
+  const partes = /^(\d{4})-(\d{2})-(\d{2})/.exec(texto);
+  if (!partes) return true; // o formato é conferido pelo próprio validador
+  const [ano, mes, dia] = [Number(partes[1]), Number(partes[2]), Number(partes[3])];
+  const data = new Date(Date.UTC(ano, mes - 1, dia));
+  return data.getUTCFullYear() === ano && data.getUTCMonth() === mes - 1 && data.getUTCDate() === dia;
+}
+
+const conferirCalendario: Joi.CustomValidator = (valor, helpers) => {
+  const original = helpers.original;
+  if (typeof original === 'string' && !diaExiste(original)) return helpers.error('date.inexistente');
+  return valor;
+};
+
+/** Data (e hora) no formato ISO, recusando dias que não existem no calendário. */
+export const dataIso = () => Joi.date().iso().custom(conferirCalendario);
+
+/** Data simples AAAA-MM-DD mantida como texto (filtros de período), também conferida no calendário. */
+export const dataSimples = () => Joi.string()
+  .pattern(/^\d{4}-\d{2}-\d{2}$/)
+  .custom(conferirCalendario)
+  .messages({ 'string.pattern.base': 'O campo {#label} deve conter uma data no formato AAAA-MM-DD.' });
+
 /** Mensagens padrão em português para os validadores Joi. */
 export const mensagens: Joi.LanguageMessages = {
   'any.required': 'O campo {#label} é obrigatório.',
@@ -42,5 +69,6 @@ export const mensagens: Joi.LanguageMessages = {
   'string.guid': 'O identificador informado é inválido.',
   'date.base': 'O campo {#label} deve conter uma data válida.',
   'date.format': 'O campo {#label} deve conter uma data válida.',
+  'date.inexistente': 'O campo {#label} contém uma data que não existe no calendário.',
   'boolean.base': 'O campo {#label} deve ser verdadeiro ou falso.',
 };
