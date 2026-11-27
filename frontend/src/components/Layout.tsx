@@ -17,7 +17,7 @@ import {
   useMediaQuery,
   useTheme,
 } from '@mui/material';
-import { Badge, DirectionsCar, Logout, Menu as MenuIcon } from '@mui/icons-material';
+import { Badge, DirectionsCar, EventNote, Logout, Menu as MenuIcon } from '@mui/icons-material';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { ROLE_LABELS } from '../types';
@@ -30,6 +30,7 @@ const drawerWidth = 248;
 const menuItems = [
   { text: 'Veículos', icon: <DirectionsCar />, path: '/veiculos' },
   { text: 'Condutores', icon: <Badge />, path: '/condutores' },
+  { text: 'Reservas e empréstimos', icon: <EventNote />, path: '/reservas' },
 ];
 
 const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {

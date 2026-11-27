@@ -133,3 +133,83 @@ export interface FiltrosCondutores {
   liberado_pool?: 'true' | 'false' | '';
   ativo?: 'true' | 'false';
 }
+
+// ------------------------------------------------------------------ Reservas e empréstimos (Sprint 02)
+
+export type TipoReserva = 'reserva' | 'emprestimo';
+export type StatusReserva = 'agendada' | 'em_uso' | 'cancelada' | 'concluida';
+
+export const TIPO_RESERVA_LABELS: Record<TipoReserva, string> = {
+  reserva: 'Reserva',
+  emprestimo: 'Empréstimo',
+};
+
+export const STATUS_RESERVA_LABELS: Record<StatusReserva, string> = {
+  agendada: 'Agendada',
+  em_uso: 'Em uso',
+  cancelada: 'Cancelada',
+  concluida: 'Concluída',
+};
+
+export interface Reserva {
+  id: string;
+  numero: number;
+  tipo: TipoReserva;
+  status: StatusReserva;
+  inicio: string;
+  fim_previsto: string;
+  retirada_em: string | null;
+  devolvida_em: string | null;
+  finalidade: string;
+  observacoes: string | null;
+  motivo_cancelamento: string | null;
+  atrasada: boolean;
+  criado_em: string;
+  veiculo: { id: string; codigo: string; placa: string; marca: string; modelo: string };
+  condutor: { id: string; nome: string; matricula: string };
+}
+
+export interface EventoReserva {
+  evento: 'registro' | 'retirada' | 'cancelamento' | 'devolucao';
+  observacao: string | null;
+  criado_em: string;
+  usuario: string | null;
+}
+
+export interface ReservaDetalhe extends Reserva {
+  eventos: EventoReserva[];
+}
+
+export interface ReservaInput {
+  tipo: TipoReserva;
+  veiculo_id: string;
+  condutor_id: string;
+  inicio?: string;
+  fim_previsto: string;
+  finalidade: string;
+  observacoes: string | null;
+}
+
+export interface ResumoReservas {
+  agendadas: number;
+  em_uso: number;
+  atrasadas: number;
+  retiradas_hoje: number;
+}
+
+export interface FiltrosReservas {
+  busca?: string;
+  status?: StatusReserva | '';
+  tipo?: TipoReserva | '';
+}
+
+export interface VeiculoDisponivel {
+  id: string;
+  codigo: string;
+  placa: string;
+  marca: string;
+  modelo: string;
+  tipo: TipoVeiculo;
+  unidade: string;
+  situacao: Situacao;
+}

@@ -7,6 +7,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 import LoginPage from './pages/LoginPage';
 import VehiclesPage from './pages/VehiclesPage';
 import DriversPage from './pages/DriversPage';
+import ReservationsPage from './pages/ReservationsPage';
 
 const App: React.FC = () => {
   const { loading, isAuthenticated } = useAuth();
@@ -38,6 +39,16 @@ const App: React.FC = () => {
           <ProtectedRoute>
             <Layout>
               <DriversPage />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/reservas"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <ReservationsPage />
             </Layout>
           </ProtectedRoute>
         }

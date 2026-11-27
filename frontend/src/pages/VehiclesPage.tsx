@@ -294,7 +294,10 @@ const VehiclesPage: React.FC = () => {
         <Typography variant="caption" color="text.secondary" sx={{ px: 2 }}>
           <SwapHoriz fontSize="inherit" sx={{ verticalAlign: 'middle', mr: 0.5 }} />Alterar situação para
         </Typography>
-        {(Object.keys(SITUACAO_LABELS) as Situacao[]).filter((s) => s !== menu?.veiculo.situacao).map((s) => (
+        {(Object.keys(SITUACAO_LABELS) as Situacao[])
+          // Veículo POOL só fica "em uso" pelo registro de empréstimo ou retirada (Sprint 02)
+          .filter((s) => s !== menu?.veiculo.situacao && !(s === 'em_uso' && menu?.veiculo.modalidade === 'pool'))
+          .map((s) => (
           <MenuItem
             key={s}
             onClick={() => { if (menu) mudarSituacao.mutate({ id: menu.veiculo.id, situacao: s }); setMenu(null); }}
