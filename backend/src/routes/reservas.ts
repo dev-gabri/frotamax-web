@@ -451,8 +451,15 @@ export async function listarPaginado(filtros: string[], params: unknown[], pagin
     params
   );
   const p = [...params, porPagina, (pagina - 1) * porPagina];
+  // Ordena e pagina só os identificadores; os dados completos (com veículo e condutor) são montados
+  // apenas para os itens da página, e não para todas as movimentações (medição da Sprint 04)
   const { rows } = await query(
-    `${SELECT_RESERVA} WHERE ${where} ORDER BY ${ORDEM} LIMIT $${p.length - 1} OFFSET $${p.length}`,
+    `${SELECT_RESERVA}
+      WHERE r.id IN (SELECT r.id FROM reservas r
+                       JOIN veiculos v ON v.id = r.veiculo_id
+                       JOIN condutores c ON c.id = r.condutor_id
+                      WHERE ${where} ORDER BY ${ORDEM} LIMIT $${p.length - 1} OFFSET $${p.length})
+      ORDER BY ${ORDEM}`,
     p
   );
   return { data: rows, meta: { pagina, por_pagina: porPagina, total: Number(total.rows[0].total) } };
