@@ -233,6 +233,13 @@ export interface ResumoReservas {
   retiradas_hoje: number;
 }
 
+export type PrazoReserva = 'atrasadas' | 'retiradas_hoje';
+
+export const PRAZO_LABELS: Record<PrazoReserva, string> = {
+  atrasadas: 'Devoluções atrasadas',
+  retiradas_hoje: 'Retiradas previstas para hoje',
+};
+
 export interface FiltrosReservas {
   busca?: string;
   status?: StatusReserva | '';
@@ -240,6 +247,8 @@ export interface FiltrosReservas {
   /** Período no formato AAAA-MM-DD (Sprint 03) */
   de?: string;
   ate?: string;
+  /** Atalhos da tela inicial (Sprint 04): mesma regra dos indicadores */
+  prazo?: PrazoReserva | '';
   pagina?: number;
   por_pagina?: number;
 }

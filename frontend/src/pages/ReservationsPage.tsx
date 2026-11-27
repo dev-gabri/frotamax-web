@@ -7,6 +7,7 @@ import {
   Button,
   Card,
   CardContent,
+  Chip,
   CircularProgress,
   Dialog,
   DialogActions,
@@ -50,6 +51,7 @@ import { ApiError } from '../services/apiService';
 import {
   DevolucaoInput,
   FiltrosReservas,
+  PRAZO_LABELS,
   Reserva,
   ReservaInput,
   ResultadoDevolucao,
@@ -65,8 +67,9 @@ import ReservaFormDialog from '../components/reservas/ReservaFormDialog';
 import CancelarReservaDialog from '../components/reservas/CancelarReservaDialog';
 import ReservaDetalhesDialog from '../components/reservas/ReservaDetalhesDialog';
 import DevolucaoDialog from '../components/reservas/DevolucaoDialog';
+import { useFiltrosDaUrl } from '../hooks/useFiltrosDaUrl';
 
-const FILTROS_INICIAIS: FiltrosReservas = { busca: '', status: '', tipo: '', de: '', ate: '' };
+const FILTROS_INICIAIS: FiltrosReservas = { busca: '', status: '', tipo: '', de: '', ate: '', prazo: '' };
 const POR_PAGINA = 25;
 
 /**
@@ -83,7 +86,11 @@ const ReservationsPage: React.FC = () => {
   const queryClient = useQueryClient();
 
   const [buscaDigitada, setBuscaDigitada] = useState('');
-  const [filtros, setFiltros] = useState<FiltrosReservas>(FILTROS_INICIAIS);
+  const [filtros, setFiltros, limparUrl] = useFiltrosDaUrl<FiltrosReservas>(
+    FILTROS_INICIAIS,
+    { status: Object.keys(STATUS_RESERVA_LABELS), prazo: Object.keys(PRAZO_LABELS) },
+    () => setBuscaDigitada('')
+  );
   const [formAberto, setFormAberto] = useState(false);
   const [erroForm, setErroForm] = useState<ApiError | null>(null);
   const [cancelando, setCancelando] = useState<Reserva | null>(null);
@@ -173,10 +180,10 @@ const ReservationsPage: React.FC = () => {
   });
 
   const filtrosAtivos = useMemo(
-    () => !!(filtros.busca || filtros.status || filtros.tipo || filtros.de || filtros.ate),
+    () => !!(filtros.busca || filtros.status || filtros.tipo || filtros.de || filtros.ate || filtros.prazo),
     [filtros]
   );
-  const limparFiltros = () => { setBuscaDigitada(''); setFiltros(FILTROS_INICIAIS); };
+  const limparFiltros = () => { setBuscaDigitada(''); setFiltros(FILTROS_INICIAIS); limparUrl(); };
 
   const reservas = lista.data?.itens ?? [];
   const total = lista.data?.meta.total ?? 0;
@@ -286,6 +293,15 @@ const ReservationsPage: React.FC = () => {
           </Grid>
         </CardContent>
       </Card>
+
+      {filtros.prazo && (
+        <Stack direction="row" mb={2}>
+          <Chip
+            color="primary" variant="outlined" label={`Mostrando: ${PRAZO_LABELS[filtros.prazo]}`}
+            onDelete={() => { setFiltros((f) => ({ ...f, prazo: '' })); limparUrl(); }}
+          />
+        </Stack>
+      )}
 
       {lista.isError && (
         <Alert severity="error" action={<Button color="inherit" onClick={() => lista.refetch()}>Tentar novamente</Button>}>

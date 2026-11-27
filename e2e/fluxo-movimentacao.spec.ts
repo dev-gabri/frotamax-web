@@ -14,7 +14,12 @@ async function entrar(page: Page, email: string) {
   await page.getByLabel('E-mail').fill(email);
   await page.getByLabel('Senha', { exact: false }).first().fill(SENHA!);
   await page.getByRole('button', { name: 'Entrar' }).click();
-  await page.waitForURL('**/veiculos');
+  await page.waitForURL((url) => url.pathname === '/');
+}
+
+/** Navega pelo menu principal (a tela inicial também tem botões com os mesmos nomes). */
+async function abrirMenu(page: Page, item: string) {
+  await page.getByRole('navigation', { name: 'Menu principal' }).getByRole('button', { name: item, exact: true }).click();
 }
 
 const formato = new Intl.NumberFormat('pt-BR');
@@ -30,7 +35,7 @@ test('ciclo completo: condutor, empréstimo, devolução e histórico', async ({
   await entrar(page, 'gestor@frotamax.local');
 
   // 1. Cadastro de condutor liberado para o POOL
-  await page.getByRole('button', { name: 'Condutores' }).click();
+  await abrirMenu(page, 'Condutores');
   await page.getByRole('button', { name: 'Novo condutor' }).click();
   const formCondutor = page.getByRole('dialog');
   await formCondutor.getByLabel(/^Nome completo/).fill(nome);
@@ -44,7 +49,7 @@ test('ciclo completo: condutor, empréstimo, devolução e histórico', async ({
   await expect(page.getByText(`Condutor ${nome} cadastrado.`)).toBeVisible();
 
   // 2. Empréstimo (retirada imediata) do primeiro veículo POOL disponível
-  await page.getByRole('button', { name: 'Reservas e empréstimos' }).click();
+  await abrirMenu(page, 'Reservas e empréstimos');
   await page.getByRole('button', { name: 'Nova reserva ou empréstimo' }).click();
   const formReserva = page.getByRole('dialog');
   await formReserva.getByRole('button', { name: /Empréstimo/ }).click();
@@ -77,7 +82,7 @@ test('ciclo completo: condutor, empréstimo, devolução e histórico', async ({
   await expect(linha.getByText(/Devolvido em/)).toBeVisible();
 
   // 4. Histórico do veículo mostra a utilização com a quilometragem percorrida
-  await page.getByRole('button', { name: 'Veículos' }).click();
+  await abrirMenu(page, 'Veículos');
   await page.getByRole('button', { name: `Histórico de utilização do veículo ${placa}` }).click();
   const historico = page.getByRole('dialog');
   const movimento = historico.getByRole('row').filter({ hasText: nome });
@@ -87,18 +92,18 @@ test('ciclo completo: condutor, empréstimo, devolução e histórico', async ({
   await historico.getByRole('button', { name: 'Fechar' }).click();
 
   // 5. Histórico do condutor
-  await page.getByRole('button', { name: 'Condutores' }).click();
+  await abrirMenu(page, 'Condutores');
   await page.getByRole('button', { name: `Histórico de utilização do condutor ${nome}` }).click();
   await expect(page.getByRole('dialog').getByRole('row').filter({ hasText: placa })).toContainText('42 km');
 });
 
 test('perfil de consulta vê o histórico, mas não registra devolução', async ({ page }) => {
   await entrar(page, 'consulta@frotamax.local');
-  await page.getByRole('button', { name: 'Reservas e empréstimos' }).click();
+  await abrirMenu(page, 'Reservas e empréstimos');
   await expect(page.getByRole('table')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Devolução' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Nova reserva ou empréstimo' })).toHaveCount(0);
-  await page.getByRole('button', { name: 'Veículos' }).click();
+  await abrirMenu(page, 'Veículos');
   await page.getByRole('button', { name: /^Histórico de utilização do veículo/ }).first().click();
   await expect(page.getByRole('dialog').getByText('Movimentações')).toBeVisible();
 });

@@ -5,6 +5,7 @@ import { useAuth } from './contexts/AuthContext';
 import Layout from './components/Layout';
 import ProtectedRoute from './components/ProtectedRoute';
 import LoginPage from './pages/LoginPage';
+import InicioPage from './pages/InicioPage';
 import VehiclesPage from './pages/VehiclesPage';
 import DriversPage from './pages/DriversPage';
 import ReservationsPage from './pages/ReservationsPage';
@@ -22,7 +23,17 @@ const App: React.FC = () => {
 
   return (
     <Routes>
-      <Route path="/login" element={isAuthenticated ? <Navigate to="/veiculos" replace /> : <LoginPage />} />
+      <Route path="/login" element={isAuthenticated ? <Navigate to="/" replace /> : <LoginPage />} />
+      <Route
+        path="/"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <InicioPage />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
       <Route
         path="/veiculos"
         element={
@@ -53,7 +64,7 @@ const App: React.FC = () => {
           </ProtectedRoute>
         }
       />
-      <Route path="*" element={<Navigate to={isAuthenticated ? '/veiculos' : '/login'} replace />} />
+      <Route path="*" element={<Navigate to={isAuthenticated ? '/' : '/login'} replace />} />
     </Routes>
   );
 };

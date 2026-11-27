@@ -63,6 +63,7 @@ import Indicador from '../components/Indicador';
 import HistoricoDialog, { AlvoHistorico } from '../components/reservas/HistoricoDialog';
 import InativarVeiculoDialog from '../components/veiculos/InativarVeiculoDialog';
 import { dataHora } from '../utils/datas';
+import { useFiltrosDaUrl } from '../hooks/useFiltrosDaUrl';
 
 const km = (n: number) => `${n.toLocaleString('pt-BR')}\u00A0km`;
 
@@ -89,7 +90,9 @@ const VehiclesPage: React.FC = () => {
   const queryClient = useQueryClient();
 
   const [buscaDigitada, setBuscaDigitada] = useState('');
-  const [filtros, setFiltros] = useState<FiltrosVeiculos>(FILTROS_INICIAIS);
+  const [filtros, setFiltros, limparUrl] = useFiltrosDaUrl<FiltrosVeiculos>(
+    FILTROS_INICIAIS, { situacao: Object.keys(SITUACAO_LABELS), ativo: ['true', 'false'] }, () => setBuscaDigitada('')
+  );
   const [formAberto, setFormAberto] = useState(false);
   const [editando, setEditando] = useState<Veiculo | null>(null);
   const [erroForm, setErroForm] = useState<ApiError | null>(null);
@@ -157,7 +160,7 @@ const VehiclesPage: React.FC = () => {
     () => !!(filtros.busca || filtros.situacao || filtros.tipo || filtros.modalidade || filtros.ativo === 'false'),
     [filtros]
   );
-  const limparFiltros = () => { setBuscaDigitada(''); setFiltros(FILTROS_INICIAIS); };
+  const limparFiltros = () => { setBuscaDigitada(''); setFiltros(FILTROS_INICIAIS); limparUrl(); };
 
   const veiculos = lista.data ?? [];
   const r = resumo.data;

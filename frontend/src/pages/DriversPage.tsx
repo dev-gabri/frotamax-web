@@ -33,6 +33,7 @@ import { condutorService } from '../services/condutorService';
 import { ApiError } from '../services/apiService';
 import { Condutor, CondutorInput, FiltrosCondutores, SITUACAO_CNH_LABELS, SituacaoCnh } from '../types';
 import { dataBR } from '../utils/datas';
+import { useFiltrosDaUrl } from '../hooks/useFiltrosDaUrl';
 import Indicador from '../components/Indicador';
 import CnhChip from '../components/condutores/CnhChip';
 import PoolChip from '../components/condutores/PoolChip';
@@ -54,7 +55,11 @@ const DriversPage: React.FC = () => {
   const queryClient = useQueryClient();
 
   const [buscaDigitada, setBuscaDigitada] = useState('');
-  const [filtros, setFiltros] = useState<FiltrosCondutores>(FILTROS_INICIAIS);
+  const [filtros, setFiltros, limparUrl] = useFiltrosDaUrl<FiltrosCondutores>(
+    FILTROS_INICIAIS,
+    { situacao_cnh: Object.keys(SITUACAO_CNH_LABELS), liberado_pool: ['true', 'false'], ativo: ['true', 'false'] },
+    () => setBuscaDigitada('')
+  );
   const [formAberto, setFormAberto] = useState(false);
   const [editando, setEditando] = useState<Condutor | null>(null);
   const [erroForm, setErroForm] = useState<ApiError | null>(null);
@@ -86,7 +91,7 @@ const DriversPage: React.FC = () => {
     () => !!(filtros.busca || filtros.situacao_cnh || filtros.liberado_pool || filtros.ativo === 'false'),
     [filtros]
   );
-  const limparFiltros = () => { setBuscaDigitada(''); setFiltros(FILTROS_INICIAIS); };
+  const limparFiltros = () => { setBuscaDigitada(''); setFiltros(FILTROS_INICIAIS); limparUrl(); };
 
   const condutores = lista.data ?? [];
   const r = resumo.data;

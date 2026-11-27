@@ -17,7 +17,7 @@ import {
   useMediaQuery,
   useTheme,
 } from '@mui/material';
-import { Badge, DirectionsCar, EventNote, Logout, Menu as MenuIcon } from '@mui/icons-material';
+import { Badge, DirectionsCar, EventNote, Home, Logout, Menu as MenuIcon } from '@mui/icons-material';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { ROLE_LABELS } from '../types';
@@ -28,6 +28,7 @@ const drawerWidth = 248;
 
 /** Itens de menu disponíveis no incremento atual. Novos módulos entram conforme as sprints. */
 const menuItems = [
+  { text: 'Início', icon: <Home />, path: '/' },
   { text: 'Veículos', icon: <DirectionsCar />, path: '/veiculos' },
   { text: 'Condutores', icon: <Badge />, path: '/condutores' },
   { text: 'Reservas e empréstimos', icon: <EventNote />, path: '/reservas' },
@@ -57,7 +58,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       <Divider sx={{ borderColor: 'rgba(255,255,255,0.12)' }} />
       <List component="nav" aria-label="Menu principal" sx={{ px: 1.5, py: 2, flexGrow: 1 }}>
         {menuItems.map((item) => {
-          const selected = location.pathname.startsWith(item.path);
+          const selected = item.path === '/' ? location.pathname === '/' : location.pathname.startsWith(item.path);
           return (
             <ListItemButton
               key={item.path}

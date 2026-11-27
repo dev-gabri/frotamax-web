@@ -34,7 +34,7 @@ const LoginPage: React.FC = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const destino = (location.state as { from?: string } | null)?.from || '/veiculos';
+  const destino = (location.state as { from?: string } | null)?.from || '/';
 
   const validar = () => {
     const novos: typeof erros = {};
