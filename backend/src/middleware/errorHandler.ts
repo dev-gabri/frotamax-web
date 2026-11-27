@@ -32,6 +32,15 @@ export const errorHandler = (error: unknown, _req: Request, res: Response, _next
     return res.status(400).json({ success: false, error: 'Corpo da requisição inválido.' });
   }
 
+  // Corpo acima do limite aceito pela API (100 KB) ou em codificação não suportada (BUG-08)
+  const corpoError = error as { type?: string };
+  if (corpoError?.type === 'entity.too.large') {
+    return res.status(413).json({ success: false, error: 'Os dados enviados excedem o tamanho permitido.' });
+  }
+  if (corpoError?.type === 'encoding.unsupported' || corpoError?.type === 'charset.unsupported') {
+    return res.status(415).json({ success: false, error: 'Formato dos dados enviados não suportado.' });
+  }
+
   // Violação de unicidade no PostgreSQL (ex.: placa ou código já cadastrados)
   const pgError = error as { code?: string; constraint?: string };
   if (pgError?.code === '23505') {

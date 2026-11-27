@@ -36,4 +36,10 @@ describe('Revisão de segurança e validação de entradas (Sprint 04)', () => {
     res = await request(app).get('/api/reservas/disponibilidade?tipo=reserva&inicio=2027-02-29T08:00&fim=2027-03-01T18:00').set(auth(gestor));
     expect(res.status).toBe(400);
   });
+
+  test('CT56 — corpo acima do limite recebe 413 com mensagem clara, sem erro interno (BUG-08)', async () => {
+    const res = await request(app).post('/api/veiculos').set(auth(gestor)).send({ modelo: 'x'.repeat(200_000) });
+    expect(res.status).toBe(413);
+    expect(res.body).toEqual({ success: false, error: 'Os dados enviados excedem o tamanho permitido.' });
+  });
 });
