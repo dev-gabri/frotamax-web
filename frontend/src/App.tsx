@@ -1,14 +1,22 @@
-import React from 'react';
+import React, { lazy, Suspense } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { Box, CircularProgress } from '@mui/material';
 import { useAuth } from './contexts/AuthContext';
 import Layout from './components/Layout';
 import ProtectedRoute from './components/ProtectedRoute';
 import LoginPage from './pages/LoginPage';
-import InicioPage from './pages/InicioPage';
-import VehiclesPage from './pages/VehiclesPage';
-import DriversPage from './pages/DriversPage';
-import ReservationsPage from './pages/ReservationsPage';
+
+// As telas internas são carregadas sob demanda: a tela de login abre sem baixar o restante do sistema
+const InicioPage = lazy(() => import('./pages/InicioPage'));
+const VehiclesPage = lazy(() => import('./pages/VehiclesPage'));
+const DriversPage = lazy(() => import('./pages/DriversPage'));
+const ReservationsPage = lazy(() => import('./pages/ReservationsPage'));
+
+const Carregando: React.FC = () => (
+  <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh">
+    <CircularProgress aria-label="Carregando" />
+  </Box>
+);
 
 /**
  * Endereço para onde o usuário volta depois do login: a tela protegida que ele tentou abrir,
@@ -23,15 +31,10 @@ const App: React.FC = () => {
   const { loading, isAuthenticated } = useAuth();
   const location = useLocation();
 
-  if (loading) {
-    return (
-      <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh">
-        <CircularProgress aria-label="Carregando" />
-      </Box>
-    );
-  }
+  if (loading) return <Carregando />;
 
   return (
+    <Suspense fallback={<Carregando />}>
     <Routes>
       <Route path="/login" element={isAuthenticated ? <Navigate to={destinoAposLogin(location.state)} replace /> : <LoginPage />} />
       <Route
@@ -76,6 +79,7 @@ const App: React.FC = () => {
       />
       <Route path="*" element={<Navigate to={isAuthenticated ? '/' : '/login'} replace />} />
     </Routes>
+    </Suspense>
   );
 };
 

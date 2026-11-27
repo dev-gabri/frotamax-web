@@ -21,5 +21,15 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: true,
+    rollupOptions: {
+      output: {
+        // Bibliotecas em arquivos próprios: mudam pouco entre versões e ficam no cache do navegador
+        manualChunks: {
+          react: ['react', 'react-dom', 'react-router-dom'],
+          mui: ['@mui/material', '@emotion/react', '@emotion/styled'],
+          dados: ['@tanstack/react-query', 'axios', 'notistack'],
+        },
+      },
+    },
   },
 });
