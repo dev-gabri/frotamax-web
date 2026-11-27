@@ -45,6 +45,8 @@ const DevolucaoDialog: React.FC<Props> = ({ reserva, salvando, erroApi, onClose,
   const theme = useTheme();
   const telaPequena = useMediaQuery(theme.breakpoints.down('sm'));
   const [devolvidaEm, setDevolvidaEm] = useState('');
+  /** Enquanto a data e a hora não forem alteradas, a API registra o horário exato do envio (BUG-06). */
+  const [dataAlterada, setDataAlterada] = useState(false);
   const [quilometragem, setQuilometragem] = useState('');
   const [observacao, setObservacao] = useState('');
   const [manutencao, setManutencao] = useState(false);
@@ -53,6 +55,7 @@ const DevolucaoDialog: React.FC<Props> = ({ reserva, salvando, erroApi, onClose,
   useEffect(() => {
     if (reserva) {
       setDevolvidaEm(paraInputDataHora(new Date()));
+      setDataAlterada(false);
       setQuilometragem('');
       setObservacao('');
       setManutencao(false);
@@ -93,7 +96,7 @@ const DevolucaoDialog: React.FC<Props> = ({ reserva, salvando, erroApi, onClose,
     setErros(e);
     if (Object.values(e).some(Boolean)) return;
     onConfirm({
-      devolvida_em: deInputDataHora(devolvidaEm),
+      devolvida_em: dataAlterada ? deInputDataHora(devolvidaEm) : undefined,
       km_devolucao: Number(quilometragem),
       observacao: observacao.trim() || null,
       enviar_manutencao: manutencao,
@@ -124,7 +127,7 @@ const DevolucaoDialog: React.FC<Props> = ({ reserva, salvando, erroApi, onClose,
             <Grid size={{ xs: 12, sm: 6 }}>
               <TextField
                 id="devolucao-data" label="Data e hora da devolução" type="datetime-local" required
-                value={devolvidaEm} onChange={(e) => { setDevolvidaEm(e.target.value); limparErro('devolvidaEm'); }}
+                value={devolvidaEm} onChange={(e) => { setDevolvidaEm(e.target.value); setDataAlterada(true); limparErro('devolvidaEm'); }}
                 error={!!erros.devolvidaEm} helperText={erros.devolvidaEm} disabled={salvando}
                 InputLabelProps={{ shrink: true }}
               />

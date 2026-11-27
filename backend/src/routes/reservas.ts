@@ -360,7 +360,7 @@ router.post('/:id/devolucao', authorize('reservas:gerenciar'), validate(idSchema
         throw new AppError(422, 'Descreva o problema encontrado (pelo menos 5 caracteres) para enviar o veículo para manutenção.');
       }
       const agora = new Date();
-      const devolvidaEm = d.devolvida_em ?? agora;
+      let devolvidaEm = d.devolvida_em ?? agora;
       if (devolvidaEm.getTime() > agora.getTime() + TOLERANCIA_MS) {
         throw new AppError(422, 'A data e a hora da devolução não podem estar no futuro.');
       }
@@ -375,6 +375,11 @@ router.post('/:id/devolucao', authorize('reservas:gerenciar'), validate(idSchema
         }
         if (reserva.status !== 'em_uso') {
           throw new AppError(422, 'Somente movimentações em andamento podem ter a devolução registrada.');
+        }
+        // O formulário informa a hora em minutos: no mesmo minuto da retirada, vale o horário da retirada (BUG-06)
+        const minuto = (d: Date) => Math.floor(d.getTime() / 60_000);
+        if (devolvidaEm < reserva.retirada_em! && minuto(devolvidaEm) === minuto(reserva.retirada_em!)) {
+          devolvidaEm = reserva.retirada_em!;
         }
         if (devolvidaEm < reserva.retirada_em!) {
           throw new AppError(422, `A devolução não pode ser anterior à retirada (${dataHora(reserva.retirada_em!)}).`);

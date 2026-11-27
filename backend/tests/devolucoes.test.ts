@@ -138,6 +138,14 @@ describe('Devolução de veículos (S3)', () => {
     expect(res.status).toBe(422);
     expect(res.body.error).toMatch(/anterior à retirada/);
 
+    // BUG-06: hora informada em minutos, no mesmo minuto da retirada, é aceita (vale o horário da retirada)
+    const rapido = await emprestar('T-001', 'D-1', 1);
+    const retirada = new Date(rapido.body.data.retirada_em);
+    const mesmoMinuto = new Date(Math.floor(retirada.getTime() / 60_000) * 60_000).toISOString();
+    const r6 = await devolver(rapido.body.data.id, { km_devolucao: 10000, devolvida_em: mesmoMinuto });
+    expect(r6.status).toBe(200);
+    expect(r6.body.data.devolvida_em).toBe(rapido.body.data.retirada_em);
+
     // Simula um empréstimo que deveria ter voltado ontem e foi devolvido hoje
     await pool.query(`UPDATE reservas SET inicio = NOW() - INTERVAL '30 hours', retirada_em = NOW() - INTERVAL '30 hours',
                              fim_previsto = NOW() - INTERVAL '24 hours' WHERE id = $1`, [id]);
@@ -275,6 +283,6 @@ describe('Histórico de utilização e consultas (S3)', () => {
     const c = await request(app).get(`/api/condutores/${ids['D-1']}/historico`).set(auth(consulta));
     expect(c.status).toBe(200);
     expect(c.body.data.condutor.ativo).toBe(false);
-    expect(c.body.data.resumo.concluidas).toBe(4);
+    expect(c.body.data.resumo.concluidas).toBe(5);
   });
 });

@@ -233,7 +233,8 @@ export interface FiltrosReservas {
 // ------------------------------------------------------------------ Devolução e histórico (Sprint 03)
 
 export interface DevolucaoInput {
-  devolvida_em: string;
+  /** Omitida quando o usuário mantém o horário atual: a API usa o horário exato do registro */
+  devolvida_em?: string;
   km_devolucao: number;
   observacao: string | null;
   enviar_manutencao: boolean;
