@@ -48,5 +48,10 @@
     "setupFiles": [
       "<rootDir>/tests/env.ts"
     ]
+  },
+  "overrides": {
+    "nodemon": {
+      "minimatch": "^11.0.9"
+    }
   }
 }
