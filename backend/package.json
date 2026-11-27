@@ -1,6 +1,6 @@
 {
   "name": "frotamax-backend",
-  "version": "0.3.0",
+  "version": "1.0.0",
   "description": "Frota Max Web - API REST (Node.js + Express + PostgreSQL)",
   "main": "dist/index.js",
   "private": true,

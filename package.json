@@ -1,6 +1,6 @@
 {
   "name": "frotamax-web",
-  "version": "0.3.0",
+  "version": "1.0.0",
   "description": "Frota Max Web - gestão de frotas do Departamento de Frotas (projeto extensionista)",
   "private": true,
   "scripts": {
