@@ -11,7 +11,8 @@
     "db:migrate": "ts-node src/db/migrate.ts",
     "db:seed": "ts-node src/db/seed.ts",
     "db:setup": "npm run db:seed",
-    "test": "jest --runInBand"
+    "test": "jest --runInBand",
+    "medir:desempenho": "ts-node --transpile-only scripts/medir-desempenho.ts"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
