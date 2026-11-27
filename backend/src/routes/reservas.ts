@@ -562,9 +562,14 @@ async function buscarParaAtualizar(client: PoolClient, id: string) {
   return rows[0];
 }
 
+/**
+ * Registra um evento da movimentação. O horário vem de clock_timestamp() (e não de NOW(), que é fixo
+ * durante a transação), para que eventos gravados juntos, como o registro e a retirada de um
+ * empréstimo, apareçam no histórico na ordem em que aconteceram (BUG-05).
+ */
 async function registrarEvento(client: PoolClient, reservaId: string, evento: string, usuarioId: string, observacao: string | null) {
   await client.query(
-    'INSERT INTO reserva_eventos (reserva_id, evento, usuario_id, observacao) VALUES ($1, $2, $3, $4)',
+    'INSERT INTO reserva_eventos (reserva_id, evento, usuario_id, observacao, criado_em) VALUES ($1, $2, $3, $4, clock_timestamp())',
     [reservaId, evento, usuarioId, observacao]
   );
 }
