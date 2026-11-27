@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Alert,
   Box,
@@ -32,9 +31,6 @@ const LoginPage: React.FC = () => {
   const [erros, setErros] = useState<{ email?: string; senha?: string }>({});
 
   const { login } = useAuth();
-  const navigate = useNavigate();
-  const location = useLocation();
-  const destino = (location.state as { from?: string } | null)?.from || '/';
 
   const validar = () => {
     const novos: typeof erros = {};
@@ -51,8 +47,8 @@ const LoginPage: React.FC = () => {
     if (!validar()) return;
     setEnviando(true);
     try {
+      // Após o login, a rota /login redireciona para a tela de origem (App.tsx, BUG-10)
       await login(email.trim(), senha);
-      navigate(destino, { replace: true });
     } catch (error) {
       setErro((error as Error).message);
       setSenha('');

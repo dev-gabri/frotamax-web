@@ -1,5 +1,5 @@
 import React from 'react';
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { Box, CircularProgress } from '@mui/material';
 import { useAuth } from './contexts/AuthContext';
 import Layout from './components/Layout';
@@ -10,8 +10,18 @@ import VehiclesPage from './pages/VehiclesPage';
 import DriversPage from './pages/DriversPage';
 import ReservationsPage from './pages/ReservationsPage';
 
+/**
+ * Endereço para onde o usuário volta depois do login: a tela protegida que ele tentou abrir,
+ * com os filtros da URL (BUG-10). Só são aceitos caminhos internos da aplicação.
+ */
+function destinoAposLogin(estado: unknown): string {
+  const origem = (estado as { from?: string } | null)?.from;
+  return origem && origem.startsWith('/') && !origem.startsWith('//') && !origem.startsWith('/login') ? origem : '/';
+}
+
 const App: React.FC = () => {
   const { loading, isAuthenticated } = useAuth();
+  const location = useLocation();
 
   if (loading) {
     return (
@@ -23,7 +33,7 @@ const App: React.FC = () => {
 
   return (
     <Routes>
-      <Route path="/login" element={isAuthenticated ? <Navigate to="/" replace /> : <LoginPage />} />
+      <Route path="/login" element={isAuthenticated ? <Navigate to={destinoAposLogin(location.state)} replace /> : <LoginPage />} />
       <Route
         path="/"
         element={
