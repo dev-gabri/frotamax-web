@@ -2,13 +2,13 @@
 
 Os perfis foram mantidos no mínimo necessário para o primeiro incremento. Os usuários do módulo Web são os profissionais do Departamento de Frotas, conforme a seção 4.2 do relatório.
 
-| Perfil | Quem representa | Consultar veículos, condutores e reservas | Cadastrar e editar veículos e condutores | Registrar, retirar e cancelar reservas e empréstimos |
+| Perfil | Quem representa | Consultar veículos, condutores, reservas e histórico de utilização | Cadastrar e editar veículos e condutores | Registrar, retirar, cancelar e devolver reservas e empréstimos |
 |---|---|:---:|:---:|:---:|
 | `admin` | Administração técnica da aplicação | ✔ | ✔ | ✔ |
 | `gestor_frota` | Supervisão e equipe do Departamento de Frotas | ✔ | ✔ | ✔ |
 | `visualizador` | Usuários que só acompanham as informações | ✔ | ✘ (HTTP 403) | ✘ (HTTP 403) |
 
-A liberação de um condutor para o POOL faz parte da edição do condutor (`admin` e `gestor_frota`).
+A liberação de um condutor para o POOL faz parte da edição do condutor (`admin` e `gestor_frota`). O registro da devolução (Sprint 03), inclusive o envio do veículo para manutenção, usa a mesma permissão das reservas (`reservas:gerenciar`).
 
 ## Regras
 

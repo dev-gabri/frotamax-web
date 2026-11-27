@@ -1,6 +1,6 @@
 {
   "name": "frotamax-frontend",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Frota Max Web - interface administrativa (React + Vite + MUI)",
   "private": true,
   "type": "module",
