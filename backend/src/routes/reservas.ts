@@ -65,8 +65,21 @@ export const paginacao = {
   por_pagina: Joi.number().integer().min(1).max(100).default(50).label('Itens por página'),
 };
 
+/**
+ * Situações de prazo usadas na tela inicial (Sprint 04), com a mesma regra dos indicadores do resumo:
+ *  - atrasadas: empréstimos em uso com a previsão de devolução já vencida;
+ *  - retiradas_hoje: reservas agendadas com início previsto para hoje.
+ */
+export const PRAZOS = ['atrasadas', 'retiradas_hoje'] as const;
+const HOJE_LOCAL = `(NOW() AT TIME ZONE '${FUSO_APLICACAO}')::date`;
+const FILTRO_PRAZO: Record<(typeof PRAZOS)[number], string> = {
+  atrasadas: `r.status = 'em_uso' AND r.fim_previsto < NOW()`,
+  retiradas_hoje: `r.status = 'agendada' AND (r.inicio AT TIME ZONE '${FUSO_APLICACAO}')::date = ${HOJE_LOCAL}`,
+};
+
 const listarSchema = Joi.object({
   busca: Joi.string().trim().max(60).allow('').label('Busca'),
+  prazo: Joi.string().valid(...PRAZOS).label('Prazo'),
   status: Joi.string().valid(...STATUS_RESERVA).label('Status'),
   tipo: Joi.string().valid(...TIPOS_RESERVA).label('Tipo'),
   veiculo_id: uuid.label('Veículo'),
@@ -124,7 +137,7 @@ router.use(authenticate);
 router.get('/', authorize('reservas:consultar'), validate(listarSchema, 'query'),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
-      const { busca, status, tipo, veiculo_id, condutor_id, de, ate } = req.query as Record<string, string | undefined>;
+      const { busca, status, tipo, veiculo_id, condutor_id, de, ate, prazo } = req.query as Record<string, string | undefined>;
       const { pagina, por_pagina } = req.query as unknown as { pagina: number; por_pagina: number };
       const filtros: string[] = ['TRUE'];
       const params: unknown[] = [];
@@ -137,6 +150,7 @@ router.get('/', authorize('reservas:consultar'), validate(listarSchema, 'query')
         params.push(busca.replace(/^#?0*/, ''));
       }
       if (status) { params.push(status); filtros.push(`r.status = $${params.length}`); }
+      if (prazo) filtros.push(FILTRO_PRAZO[prazo as (typeof PRAZOS)[number]]);
       if (tipo) { params.push(tipo); filtros.push(`r.tipo = $${params.length}`); }
       if (veiculo_id) { params.push(veiculo_id); filtros.push(`r.veiculo_id = $${params.length}`); }
       if (condutor_id) { params.push(condutor_id); filtros.push(`r.condutor_id = $${params.length}`); }
@@ -165,10 +179,9 @@ router.get('/resumo', authorize('reservas:consultar'),
       const { rows } = await query<Record<string, string>>(
         `SELECT COUNT(*) FILTER (WHERE status = 'agendada') AS agendadas,
                 COUNT(*) FILTER (WHERE status = 'em_uso') AS em_uso,
-                COUNT(*) FILTER (WHERE status = 'em_uso' AND fim_previsto < NOW()) AS atrasadas,
-                COUNT(*) FILTER (WHERE status = 'agendada'
-                                   AND (inicio AT TIME ZONE '${FUSO_APLICACAO}')::date = (NOW() AT TIME ZONE '${FUSO_APLICACAO}')::date) AS retiradas_hoje
-           FROM reservas`
+                COUNT(*) FILTER (WHERE ${FILTRO_PRAZO.atrasadas}) AS atrasadas,
+                COUNT(*) FILTER (WHERE ${FILTRO_PRAZO.retiradas_hoje}) AS retiradas_hoje
+           FROM reservas r`
       );
       const r = rows[0];
       res.json({
