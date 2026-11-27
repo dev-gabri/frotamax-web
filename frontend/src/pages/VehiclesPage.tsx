@@ -55,26 +55,9 @@ import {
 } from '../types';
 import SituacaoChip from '../components/veiculos/SituacaoChip';
 import VeiculoFormDialog from '../components/veiculos/VeiculoFormDialog';
+import Indicador from '../components/Indicador';
 
 const km = (n: number) => `${n.toLocaleString('pt-BR')}\u00A0km`;
-
-/** Cartão de indicador (total e quantidade por situação). */
-const Indicador: React.FC<{ titulo: string; valor?: number; total?: number; icone: React.ReactNode; cor: string }> = ({ titulo, valor, total, icone, cor }) => (
-  <Card sx={{ height: '100%' }}>
-    <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-      <Box sx={{ bgcolor: `${cor}1A`, color: cor, borderRadius: 2, p: 1.2, display: 'flex' }} aria-hidden>{icone}</Box>
-      <Box>
-        <Typography variant="body2" color="text.secondary">{titulo}</Typography>
-        {valor === undefined ? <Skeleton width={40} height={36} /> : (
-          <Typography variant="h5" component="p">{valor}</Typography>
-        )}
-        {total !== undefined && valor !== undefined && total > 0 && (
-          <Typography variant="caption" color="text.secondary">{Math.round((valor / total) * 100)}% da frota</Typography>
-        )}
-      </Box>
-    </CardContent>
-  </Card>
-);
 
 /**
  * Gestão de veículos (card S1-05): indicadores, busca, filtros, listagem,

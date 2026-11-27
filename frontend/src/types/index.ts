@@ -80,3 +80,56 @@ export interface FiltrosVeiculos {
   tipo?: TipoVeiculo | '';
   modalidade?: Modalidade | '';
 }
+
+// ------------------------------------------------------------------ Condutores (Sprint 02)
+
+export type CategoriaCnh = 'A' | 'B' | 'C' | 'D' | 'E' | 'AB' | 'AC' | 'AD' | 'AE';
+export const CATEGORIAS_CNH: CategoriaCnh[] = ['A', 'B', 'C', 'D', 'E', 'AB', 'AC', 'AD', 'AE'];
+
+export type SituacaoCnh = 'valida' | 'vencendo' | 'vencida';
+export const SITUACAO_CNH_LABELS: Record<SituacaoCnh, string> = {
+  valida: 'CNH válida',
+  vencendo: 'CNH vencendo',
+  vencida: 'CNH vencida',
+};
+
+export interface Condutor {
+  id: string;
+  nome: string;
+  matricula: string;
+  cnh_categoria: CategoriaCnh;
+  /** Data no formato AAAA-MM-DD */
+  cnh_validade: string;
+  situacao_cnh: SituacaoCnh;
+  telefone: string | null;
+  liberado_pool: boolean;
+  ativo: boolean;
+  observacoes: string | null;
+  criado_em: string;
+  atualizado_em: string;
+}
+
+export interface CondutorInput {
+  nome: string;
+  matricula: string;
+  cnh_categoria: CategoriaCnh;
+  cnh_validade: string;
+  telefone: string | null;
+  liberado_pool: boolean;
+  observacoes: string | null;
+  ativo?: boolean;
+}
+
+export interface ResumoCondutores {
+  total: number;
+  liberados_pool: number;
+  cnh_vencendo: number;
+  cnh_vencida: number;
+}
+
+export interface FiltrosCondutores {
+  busca?: string;
+  situacao_cnh?: SituacaoCnh | '';
+  liberado_pool?: 'true' | 'false' | '';
+  ativo?: 'true' | 'false';
+}
