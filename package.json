@@ -6,6 +6,7 @@
   "scripts": {
     "install:all": "npm install && npm --prefix backend install && npm --prefix frontend install",
     "db:setup": "npm --prefix backend run db:setup",
+    "db:recriar": "npm --prefix backend run db:recriar --",
     "dev": "concurrently -n api,web -c blue,green \"npm --prefix backend run dev\" \"npm --prefix frontend run dev\"",
     "build": "npm --prefix backend run build && npm --prefix frontend run build",
     "test:e2e": "playwright test --config e2e/playwright.config.ts"
