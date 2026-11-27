@@ -1,5 +1,6 @@
 import request from 'supertest';
-import { app, encerrar, prepararBanco, token } from './helpers';
+import { app, encerrar, prepararBanco, SENHA, token } from './helpers';
+import { limparTentativas } from '../src/routes/auth';
 
 let gestor: string;
 
@@ -42,4 +43,20 @@ describe('Revisão de segurança e validação de entradas (Sprint 04)', () => {
     expect(res.status).toBe(413);
     expect(res.body).toEqual({ success: false, error: 'Os dados enviados excedem o tamanho permitido.' });
   });
+
+  test('CT57 — muitas falhas de login da mesma origem, com e-mails diferentes, bloqueiam a origem (BUG-09)', async () => {
+    limparTentativas();
+    // 20 e-mails diferentes, uma tentativa cada: nenhum chega ao limite de 5 por e-mail
+    for (let i = 0; i < 20; i++) {
+      const r = await request(app).post('/api/auth/login').send({ email: `alvo${i}@teste.local`, senha: 'senha-testada' });
+      expect(r.status).toBe(401);
+    }
+    const bloqueado = await request(app).post('/api/auth/login').send({ email: 'gestor@teste.local', senha: SENHA });
+    expect(bloqueado.status).toBe(429);
+    expect(bloqueado.body.error).toBe('Muitas tentativas de acesso. Aguarde alguns minutos e tente novamente.');
+
+    limparTentativas(); // fim da janela de bloqueio
+    const liberado = await request(app).post('/api/auth/login').send({ email: 'gestor@teste.local', senha: SENHA });
+    expect(liberado.status).toBe(200);
+  }, 60_000); // cada falha compara a senha com bcrypt de propósito (resposta lenta para quem tenta adivinhar)
 });

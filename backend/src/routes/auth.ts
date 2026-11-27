@@ -15,19 +15,50 @@ const loginSchema = Joi.object({
 }).messages(mensagens);
 
 /**
- * Limite simples de tentativas: após 5 falhas para o mesmo e-mail e origem,
- * novas tentativas ficam bloqueadas por 15 minutos (proteção contra força bruta).
+ * Limite de tentativas (proteção contra força bruta):
+ *  - após 5 falhas para o mesmo e-mail e origem, esse e-mail fica bloqueado nessa origem por 15 minutos;
+ *  - após 20 falhas da mesma origem, com quaisquer e-mails, a origem fica bloqueada por 15 minutos,
+ *    o que impede testar uma senha em muitas contas (BUG-09).
+ * Os registros vencidos são descartados para que a memória não cresça sem limite.
  */
 const MAX_TENTATIVAS = 5;
+const MAX_FALHAS_POR_ORIGEM = 20;
 const JANELA_MS = 15 * 60 * 1000;
-const tentativas = new Map<string, { falhas: number; desde: number }>();
+const LIMPEZA_A_PARTIR_DE = 500;
+
+interface Falhas { falhas: number; desde: number }
+const tentativas = new Map<string, Falhas>();
+const porOrigem = new Map<string, Falhas>();
 
 function chave(req: Request, email: string) {
   return `${req.ip}|${email}`;
 }
 
+/** Retorna o registro ainda dentro da janela de bloqueio, descartando o vencido. */
+function registroAtual(mapa: Map<string, Falhas>, k: string): Falhas | undefined {
+  const registro = mapa.get(k);
+  if (registro && Date.now() - registro.desde >= JANELA_MS) {
+    mapa.delete(k);
+    return undefined;
+  }
+  return registro;
+}
+
+function contarFalha(mapa: Map<string, Falhas>, k: string) {
+  const atual = registroAtual(mapa, k) ?? { falhas: 0, desde: Date.now() };
+  mapa.set(k, { falhas: atual.falhas + 1, desde: atual.desde });
+}
+
+function descartarVencidos() {
+  if (tentativas.size + porOrigem.size < LIMPEZA_A_PARTIR_DE) return;
+  for (const mapa of [tentativas, porOrigem]) {
+    for (const k of mapa.keys()) registroAtual(mapa, k);
+  }
+}
+
 export function limparTentativas() {
   tentativas.clear();
+  porOrigem.clear();
 }
 
 // Hash usado quando o e-mail não existe, para que o tempo de resposta não revele contas válidas
@@ -38,9 +69,12 @@ const MENSAGEM_CREDENCIAIS = 'E-mail ou senha inválidos.';
 router.post('/login', validate(loginSchema), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { email, senha } = req.body as { email: string; senha: string };
+    descartarVencidos();
     const k = chave(req, email);
-    const registro = tentativas.get(k);
-    if (registro && registro.falhas >= MAX_TENTATIVAS && Date.now() - registro.desde < JANELA_MS) {
+    const origem = req.ip ?? 'desconhecida';
+    const doEmail = registroAtual(tentativas, k);
+    const daOrigem = registroAtual(porOrigem, origem);
+    if ((doEmail && doEmail.falhas >= MAX_TENTATIVAS) || (daOrigem && daOrigem.falhas >= MAX_FALHAS_POR_ORIGEM)) {
       throw new AppError(429, 'Muitas tentativas de acesso. Aguarde alguns minutos e tente novamente.');
     }
 
@@ -52,8 +86,8 @@ router.post('/login', validate(loginSchema), async (req: Request, res: Response,
     const senhaConfere = await bcrypt.compare(senha, usuario?.senha_hash ?? HASH_FICTICIO);
 
     if (!usuario || !senhaConfere || !usuario.ativo) {
-      const atual = registro && Date.now() - registro.desde < JANELA_MS ? registro : { falhas: 0, desde: Date.now() };
-      tentativas.set(k, { falhas: atual.falhas + 1, desde: atual.desde });
+      contarFalha(tentativas, k);
+      contarFalha(porOrigem, origem);
       throw new AppError(401, MENSAGEM_CREDENCIAIS);
     }
 
