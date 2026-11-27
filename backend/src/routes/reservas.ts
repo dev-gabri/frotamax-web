@@ -22,6 +22,14 @@ import { dataBR, dataHora, dataLocalISO, FUSO_APLICACAO } from '../utils/datas';
  * (ver docs/sprint-02/REGRAS_RESERVAS.md).
  * Todas as regras são verificadas no servidor, dentro de uma transação que bloqueia o veículo,
  * para que dois registros simultâneos não ocupem o mesmo período.
+ *
+ * Devolução (Sprint 03), regras combinadas com o Departamento de Frotas:
+ *  - registra data e hora, quilometragem de chegada e observação;
+ *  - a quilometragem de chegada atualiza a do veículo e não pode ser menor que a registrada;
+ *  - o Departamento de Frotas pode enviar o veículo para manutenção no próprio registro da devolução.
+ * Decisões técnicas da equipe: a data e a hora informadas não podem ser futuras nem anteriores à
+ * retirada, e o envio para manutenção exige a descrição do problema
+ * (ver docs/sprint-03/REGRAS_DEVOLUCAO.md).
  */
 const router = Router();
 
@@ -51,12 +59,31 @@ const cancelarSchema = Joi.object({
 
 const idSchema = Joi.object({ id: uuid.required().label('Identificador') }).messages(mensagens);
 
+const dataSimples = Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/)
+  .messages({ 'string.pattern.base': 'O campo {#label} deve conter uma data no formato AAAA-MM-DD.' });
+
+/** Paginação das consultas, para não carregar todo o histórico de uma vez (RNF10). */
+export const paginacao = {
+  pagina: Joi.number().integer().min(1).max(10_000).default(1).label('Página'),
+  por_pagina: Joi.number().integer().min(1).max(100).default(50).label('Itens por página'),
+};
+
 const listarSchema = Joi.object({
   busca: Joi.string().trim().max(60).allow('').label('Busca'),
   status: Joi.string().valid(...STATUS_RESERVA).label('Status'),
   tipo: Joi.string().valid(...TIPOS_RESERVA).label('Tipo'),
   veiculo_id: uuid.label('Veículo'),
   condutor_id: uuid.label('Condutor'),
+  de: dataSimples.label('Data inicial'),
+  ate: dataSimples.label('Data final'),
+  ...paginacao,
+}).messages(mensagens);
+
+const devolucaoSchema = Joi.object({
+  devolvida_em: Joi.date().iso().label('Data e hora da devolução'),
+  km_devolucao: Joi.number().integer().min(0).max(5_000_000).required().label('Quilometragem de chegada'),
+  observacao: Joi.string().trim().max(500).allow('', null).label('Observação'),
+  enviar_manutencao: Joi.boolean().default(false).label('Enviar para manutenção'),
 }).messages(mensagens);
 
 const disponibilidadeSchema = Joi.object({
@@ -73,17 +100,26 @@ const disponibilidadeSchema = Joi.object({
 const INICIO_OCUPADO = 'LEAST(r.inicio, COALESCE(r.retirada_em, r.inicio))';
 const FIM_OCUPADO = `CASE WHEN r.status = 'em_uso' THEN GREATEST(r.fim_previsto, NOW()) ELSE r.fim_previsto END`;
 
-const SELECT_RESERVA = `
+export const SELECT_RESERVA = `
   SELECT r.id, r.numero, r.tipo, r.status, r.inicio, r.fim_previsto, r.retirada_em, r.devolvida_em,
          r.finalidade, r.observacoes, r.motivo_cancelamento, r.criado_em, r.atualizado_em,
+         r.km_retirada, r.km_devolucao, (r.km_devolucao - r.km_retirada) AS km_percorridos,
+         r.observacao_devolucao, r.enviado_manutencao,
          (r.status = 'em_uso' AND r.fim_previsto < NOW()) AS atrasada,
-         json_build_object('id', v.id, 'codigo', v.codigo, 'placa', v.placa, 'marca', v.marca, 'modelo', v.modelo) AS veiculo,
+         (r.status = 'concluida' AND r.devolvida_em > r.fim_previsto) AS devolvida_com_atraso,
+         json_build_object('id', v.id, 'codigo', v.codigo, 'placa', v.placa, 'marca', v.marca, 'modelo', v.modelo,
+                           'quilometragem', v.quilometragem, 'situacao', v.situacao) AS veiculo,
          json_build_object('id', c.id, 'nome', c.nome, 'matricula', c.matricula) AS condutor
     FROM reservas r
     JOIN veiculos v ON v.id = r.veiculo_id
     JOIN condutores c ON c.id = r.condutor_id`;
 
-const ORDEM = `array_position(ARRAY['em_uso', 'agendada', 'concluida', 'cancelada']::varchar[], r.status), r.inicio`;
+/** Em andamento e agendadas primeiro (da mais próxima para a mais distante); encerradas da mais recente para a mais antiga. */
+export const ORDEM = `array_position(ARRAY['em_uso', 'agendada', 'concluida', 'cancelada']::varchar[], r.status),
+  CASE WHEN r.status IN ('em_uso', 'agendada') THEN r.inicio END ASC, r.inicio DESC, r.numero DESC`;
+
+/** Início do dia (00h no fuso da aplicação) de uma data AAAA-MM-DD. */
+const inicioDoDia = (param: string) => `(${param}::date::timestamp AT TIME ZONE '${FUSO_APLICACAO}')`;
 
 router.use(authenticate);
 
@@ -91,7 +127,8 @@ router.use(authenticate);
 router.get('/', authorize('reservas:consultar'), validate(listarSchema, 'query'),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
-      const { busca, status, tipo, veiculo_id, condutor_id } = req.query as Record<string, string | undefined>;
+      const { busca, status, tipo, veiculo_id, condutor_id, de, ate } = req.query as Record<string, string | undefined>;
+      const { pagina, por_pagina } = req.query as unknown as { pagina: number; por_pagina: number };
       const filtros: string[] = ['TRUE'];
       const params: unknown[] = [];
 
@@ -106,9 +143,19 @@ router.get('/', authorize('reservas:consultar'), validate(listarSchema, 'query')
       if (tipo) { params.push(tipo); filtros.push(`r.tipo = $${params.length}`); }
       if (veiculo_id) { params.push(veiculo_id); filtros.push(`r.veiculo_id = $${params.length}`); }
       if (condutor_id) { params.push(condutor_id); filtros.push(`r.condutor_id = $${params.length}`); }
+      if (de && ate && de > ate) throw new AppError(422, 'A data inicial deve ser anterior ou igual à data final.');
+      // Período: movimentações que ocorreram (total ou parcialmente) entre as datas informadas
+      if (de) {
+        params.push(de);
+        filtros.push(`COALESCE(r.devolvida_em, GREATEST(r.fim_previsto, CASE WHEN r.status = 'em_uso' THEN NOW() END)) >= ${inicioDoDia(`$${params.length}`)}`);
+      }
+      if (ate) {
+        params.push(ate);
+        filtros.push(`LEAST(r.inicio, COALESCE(r.retirada_em, r.inicio)) < ${inicioDoDia(`$${params.length}`)} + INTERVAL '1 day'`);
+      }
 
-      const { rows } = await query(`${SELECT_RESERVA} WHERE ${filtros.join(' AND ')} ORDER BY ${ORDEM}`, params);
-      res.json({ success: true, data: rows });
+      const resultado = await listarPaginado(filtros, params, pagina, por_pagina);
+      res.json({ success: true, ...resultado });
     } catch (error) {
       next(error);
     }
@@ -214,11 +261,11 @@ router.post('/', authorize('reservas:gerenciar'), validate(criarSchema),
 
         const status = d.tipo === 'emprestimo' ? 'em_uso' : 'agendada';
         const { rows } = await client.query<{ id: string }>(
-          `INSERT INTO reservas (tipo, veiculo_id, condutor_id, inicio, fim_previsto, retirada_em, finalidade,
-                                 observacoes, status, criado_por, atualizado_por)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10) RETURNING id`,
+          `INSERT INTO reservas (tipo, veiculo_id, condutor_id, inicio, fim_previsto, retirada_em, km_retirada,
+                                 finalidade, observacoes, status, criado_por, atualizado_por)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11) RETURNING id`,
           [d.tipo, veiculo.id, d.condutor_id, inicio, d.fim_previsto, d.tipo === 'emprestimo' ? agora : null,
-            d.finalidade, d.observacoes || null, status, req.usuario!.id]
+            d.tipo === 'emprestimo' ? veiculo.quilometragem : null, d.finalidade, d.observacoes || null, status, req.usuario!.id]
         );
         const reservaId = rows[0].id;
         await registrarEvento(client, reservaId, 'registro', req.usuario!.id,
@@ -260,8 +307,8 @@ router.post('/:id/retirada', authorize('reservas:gerenciar'), validate(idSchema,
         }
 
         await client.query(
-          `UPDATE reservas SET status = 'em_uso', retirada_em = $1, atualizado_por = $2 WHERE id = $3`,
-          [agora, req.usuario!.id, reserva.id]
+          `UPDATE reservas SET status = 'em_uso', retirada_em = $1, km_retirada = $2, atualizado_por = $3 WHERE id = $4`,
+          [agora, veiculo.quilometragem, req.usuario!.id, reserva.id]
         );
         await client.query(`UPDATE veiculos SET situacao = 'em_uso', atualizado_por = $1 WHERE id = $2`,
           [req.usuario!.id, veiculo.id]);
@@ -299,7 +346,141 @@ router.post('/:id/cancelamento', authorize('reservas:gerenciar'), validate(idSch
     }
   });
 
+/**
+ * POST /api/reservas/:id/devolucao — registra a devolução de um veículo retirado (Sprint 03).
+ * Encerra a movimentação, atualiza a quilometragem do veículo e o deixa disponível,
+ * ou em manutenção quando o Departamento de Frotas assim indicar.
+ */
+router.post('/:id/devolucao', authorize('reservas:gerenciar'), validate(idSchema, 'params'), validate(devolucaoSchema),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const d = req.body as { devolvida_em?: Date; km_devolucao: number; observacao?: string | null; enviar_manutencao: boolean };
+      const observacao = d.observacao?.trim() || null;
+      if (d.enviar_manutencao && (!observacao || observacao.length < 5)) {
+        throw new AppError(422, 'Descreva o problema encontrado (pelo menos 5 caracteres) para enviar o veículo para manutenção.');
+      }
+      const agora = new Date();
+      const devolvidaEm = d.devolvida_em ?? agora;
+      if (devolvidaEm.getTime() > agora.getTime() + TOLERANCIA_MS) {
+        throw new AppError(422, 'A data e a hora da devolução não podem estar no futuro.');
+      }
+
+      const afetadas = await transaction(async (client) => {
+        const reserva = await buscarParaAtualizar(client, req.params.id);
+        if (reserva.status === 'concluida') {
+          throw new AppError(409, 'A devolução desta movimentação já foi registrada.');
+        }
+        if (reserva.status === 'agendada') {
+          throw new AppError(422, 'O veículo desta reserva ainda não foi retirado. Registre a retirada ou cancele a reserva.');
+        }
+        if (reserva.status !== 'em_uso') {
+          throw new AppError(422, 'Somente movimentações em andamento podem ter a devolução registrada.');
+        }
+        if (devolvidaEm < reserva.retirada_em!) {
+          throw new AppError(422, `A devolução não pode ser anterior à retirada (${dataHora(reserva.retirada_em!)}).`);
+        }
+
+        const { rows: vs } = await client.query<{ placa: string; quilometragem: number }>(
+          'SELECT placa, quilometragem FROM veiculos WHERE id = $1', [reserva.veiculo_id]
+        );
+        const veiculo = vs[0];
+        if (d.km_devolucao < veiculo.quilometragem) {
+          throw new AppError(422, `A quilometragem de chegada (${km(d.km_devolucao)}) é menor que a registrada `
+            + `para o veículo ${veiculo.placa} (${km(veiculo.quilometragem)}).`);
+        }
+
+        await client.query(
+          `UPDATE reservas
+              SET status = 'concluida', devolvida_em = $1, km_devolucao = $2, observacao_devolucao = $3,
+                  enviado_manutencao = $4, devolvida_por = $5, atualizado_por = $5,
+                  km_retirada = COALESCE(km_retirada, $6)
+            WHERE id = $7`,
+          [devolvidaEm, d.km_devolucao, observacao, d.enviar_manutencao, req.usuario!.id, veiculo.quilometragem, reserva.id]
+        );
+        await client.query(
+          'UPDATE veiculos SET quilometragem = $1, situacao = $2, atualizado_por = $3 WHERE id = $4',
+          [d.km_devolucao, d.enviar_manutencao ? 'manutencao' : 'disponivel', req.usuario!.id, reserva.veiculo_id]
+        );
+        const resumo = `Devolução com ${km(d.km_devolucao)}.`
+          + (d.enviar_manutencao ? ' Veículo enviado para manutenção.' : '')
+          + (observacao ? ` ${observacao}` : '');
+        await registrarEvento(client, reserva.id, 'devolucao', req.usuario!.id, resumo.slice(0, 300));
+
+        if (!d.enviar_manutencao) return [];
+        // Reservas futuras do veículo enviado para manutenção: não são canceladas automaticamente,
+        // mas são informadas para que o Departamento de Frotas decida o que fazer
+        const { rows } = await client.query<{ numero: number; inicio: Date; fim_previsto: Date; condutor: string }>(
+          `SELECT r.numero, r.inicio, r.fim_previsto, c.nome AS condutor
+             FROM reservas r JOIN condutores c ON c.id = r.condutor_id
+            WHERE r.veiculo_id = $1 AND r.status = 'agendada' ORDER BY r.inicio`,
+          [reserva.veiculo_id]
+        );
+        return rows;
+      });
+
+      const { rows } = await query(`${SELECT_RESERVA} WHERE r.id = $1`, [req.params.id]);
+      res.json({ success: true, data: { ...rows[0], reservas_afetadas: afetadas } });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+// ------------------------------------------------------------------ consultas paginadas e histórico
+
+/** Lista movimentações com filtros já montados, devolvendo a página pedida e o total encontrado. */
+export async function listarPaginado(filtros: string[], params: unknown[], pagina: number, porPagina: number) {
+  const where = filtros.join(' AND ');
+  const total = await query<{ total: string }>(
+    `SELECT COUNT(*) AS total FROM reservas r JOIN veiculos v ON v.id = r.veiculo_id
+       JOIN condutores c ON c.id = r.condutor_id WHERE ${where}`,
+    params
+  );
+  const p = [...params, porPagina, (pagina - 1) * porPagina];
+  const { rows } = await query(
+    `${SELECT_RESERVA} WHERE ${where} ORDER BY ${ORDEM} LIMIT $${p.length - 1} OFFSET $${p.length}`,
+    p
+  );
+  return { data: rows, meta: { pagina, por_pagina: porPagina, total: Number(total.rows[0].total) } };
+}
+
+/**
+ * Histórico de utilização de um veículo ou de um condutor (RF12, CA08): resumo e movimentações,
+ * incluindo as já encerradas, das mais recentes para as mais antigas.
+ */
+export async function consultarHistorico(alvo: 'veiculo' | 'condutor', id: string, pagina: number, porPagina: number) {
+  const coluna = alvo === 'veiculo' ? 'r.veiculo_id' : 'r.condutor_id';
+  const { rows: resumo } = await query<Record<string, string | null>>(
+    `SELECT COUNT(*) AS movimentacoes,
+            COUNT(*) FILTER (WHERE r.status = 'concluida') AS concluidas,
+            COUNT(*) FILTER (WHERE r.status = 'cancelada') AS canceladas,
+            COUNT(*) FILTER (WHERE r.status IN ('agendada', 'em_uso')) AS em_aberto,
+            COUNT(*) FILTER (WHERE r.status = 'concluida' AND r.devolvida_em > r.fim_previsto) AS devolvidas_com_atraso,
+            COALESCE(SUM(r.km_devolucao - r.km_retirada) FILTER (WHERE r.status = 'concluida'), 0) AS km_percorridos,
+            MAX(r.devolvida_em) AS ultima_devolucao
+       FROM reservas r WHERE ${coluna} = $1`,
+    [id]
+  );
+  const r = resumo[0];
+  const pagina_ = await listarPaginado([`${coluna} = $1`], [id], pagina, porPagina);
+  return {
+    resumo: {
+      movimentacoes: Number(r.movimentacoes),
+      concluidas: Number(r.concluidas),
+      canceladas: Number(r.canceladas),
+      em_aberto: Number(r.em_aberto),
+      devolvidas_com_atraso: Number(r.devolvidas_com_atraso),
+      km_percorridos: Number(r.km_percorridos),
+      ultima_devolucao: r.ultima_devolucao,
+    },
+    itens: pagina_.data,
+    meta: pagina_.meta,
+  };
+}
+
 // ------------------------------------------------------------------ regras de negócio
+
+const formatoKm = new Intl.NumberFormat('pt-BR');
+const km = (valor: number) => `${formatoKm.format(valor)} km`;
 
 const SITUACAO_TEXTO: Record<string, string> = {
   manutencao: 'em manutenção',
@@ -309,8 +490,10 @@ const SITUACAO_TEXTO: Record<string, string> = {
 
 /** Bloqueia o veículo até o fim da transação e verifica se ele pode ser reservado ou retirado. */
 async function validarVeiculo(client: PoolClient, veiculoId: string, retiradaImediata: boolean) {
-  const { rows } = await client.query<{ id: string; placa: string; modalidade: string; situacao: string; ativo: boolean }>(
-    'SELECT id, placa, modalidade, situacao, ativo FROM veiculos WHERE id = $1 FOR UPDATE',
+  const { rows } = await client.query<{
+    id: string; placa: string; modalidade: string; situacao: string; ativo: boolean; quilometragem: number;
+  }>(
+    'SELECT id, placa, modalidade, situacao, ativo, quilometragem FROM veiculos WHERE id = $1 FOR UPDATE',
     [veiculoId]
   );
   const v = rows[0];
@@ -373,7 +556,8 @@ async function buscarParaAtualizar(client: PoolClient, id: string) {
   await client.query('SELECT 1 FROM veiculos WHERE id = $1 FOR UPDATE', [ref.rows[0].veiculo_id]);
   const { rows } = await client.query<{
     id: string; status: string; veiculo_id: string; condutor_id: string; inicio: Date; fim_previsto: Date;
-  }>('SELECT id, status, veiculo_id, condutor_id, inicio, fim_previsto FROM reservas WHERE id = $1 FOR UPDATE', [id]);
+    retirada_em: Date | null;
+  }>('SELECT id, status, veiculo_id, condutor_id, inicio, fim_previsto, retirada_em FROM reservas WHERE id = $1 FOR UPDATE', [id]);
   if (!rows[0]) throw new AppError(404, 'Reserva não encontrada.');
   return rows[0];
 }

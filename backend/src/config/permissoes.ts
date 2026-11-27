@@ -16,7 +16,7 @@ export const PERMISSOES = {
   'condutores:gerenciar': ['admin', 'gestor_frota'],
   /** Listar e consultar reservas e empréstimos */
   'reservas:consultar': ['admin', 'gestor_frota', 'visualizador'],
-  /** Registrar reservas e empréstimos, retiradas e cancelamentos */
+  /** Registrar reservas e empréstimos, retiradas, cancelamentos e devoluções */
   'reservas:gerenciar': ['admin', 'gestor_frota'],
 } as const satisfies Record<string, readonly Perfil[]>;
 

@@ -7,6 +7,7 @@ import { AppError } from '../middleware/errorHandler';
 import { mensagens, validate } from '../middleware/validate';
 import { AuthenticatedRequest } from '../types';
 import { FUSO_APLICACAO } from '../utils/datas';
+import { consultarHistorico, paginacao } from './reservas';
 
 const router = Router();
 
@@ -44,6 +45,8 @@ const atualizarSchema = Joi.object(camposCondutor).min(1).messages(mensagens);
 const idSchema = Joi.object({
   id: Joi.string().guid({ version: ['uuidv4'] }).required().label('Identificador'),
 }).messages(mensagens);
+
+const historicoSchema = Joi.object(paginacao).messages(mensagens);
 
 const listarSchema = Joi.object({
   busca: Joi.string().trim().max(60).allow('').label('Busca'),
@@ -124,6 +127,20 @@ router.get('/:id', authorize('condutores:consultar'), validate(idSchema, 'params
       const { rows } = await query(`SELECT ${COLUNAS} FROM condutores WHERE id = $1`, [req.params.id]);
       if (!rows[0]) throw new AppError(404, 'Condutor não encontrado.');
       res.json({ success: true, data: rows[0] });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+/** GET /api/condutores/:id/historico — reservas, empréstimos e devoluções do condutor (Sprint 03). */
+router.get('/:id/historico', authorize('reservas:consultar'), validate(idSchema, 'params'), validate(historicoSchema, 'query'),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const { rows } = await query('SELECT id, nome, matricula, ativo FROM condutores WHERE id = $1', [req.params.id]);
+      if (!rows[0]) throw new AppError(404, 'Condutor não encontrado.');
+      const { pagina, por_pagina } = req.query as unknown as { pagina: number; por_pagina: number };
+      const { resumo, itens, meta } = await consultarHistorico('condutor', req.params.id, pagina, por_pagina);
+      res.json({ success: true, data: { condutor: rows[0], resumo, itens }, meta });
     } catch (error) {
       next(error);
     }

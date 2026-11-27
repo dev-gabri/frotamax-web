@@ -6,6 +6,7 @@ import { authorize } from '../middleware/authorize';
 import { AppError } from '../middleware/errorHandler';
 import { mensagens, validate } from '../middleware/validate';
 import { AuthenticatedRequest } from '../types';
+import { consultarHistorico, paginacao } from './reservas';
 
 const router = Router();
 
@@ -69,6 +70,8 @@ const listarSchema = Joi.object({
   modalidade: Joi.string().valid(...MODALIDADES).label('Modalidade de uso'),
 }).messages(mensagens);
 
+const historicoSchema = Joi.object(paginacao).messages(mensagens);
+
 const COLUNAS = `id, codigo, placa, marca, modelo, ano_modelo, tipo, unidade, quilometragem,
   modalidade, situacao, observacoes, criado_em, atualizado_em`;
 
@@ -125,6 +128,26 @@ router.get('/:id', authorize('veiculos:consultar'), validate(idSchema, 'params')
       const { rows } = await query(`SELECT ${COLUNAS} FROM veiculos WHERE id = $1 AND ativo = TRUE`, [req.params.id]);
       if (!rows[0]) throw new AppError(404, 'Veículo não encontrado.');
       res.json({ success: true, data: rows[0] });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+/**
+ * GET /api/veiculos/:id/historico — histórico de utilização do veículo (Sprint 03, RF12/CA08).
+ * Também responde para veículos inativos, para que o histórico não se perca.
+ */
+router.get('/:id/historico', authorize('reservas:consultar'), validate(idSchema, 'params'), validate(historicoSchema, 'query'),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const { rows } = await query(
+        'SELECT id, codigo, placa, marca, modelo, quilometragem, modalidade, situacao, ativo FROM veiculos WHERE id = $1',
+        [req.params.id]
+      );
+      if (!rows[0]) throw new AppError(404, 'Veículo não encontrado.');
+      const { pagina, por_pagina } = req.query as unknown as { pagina: number; por_pagina: number };
+      const { resumo, itens, meta } = await consultarHistorico('veiculo', req.params.id, pagina, por_pagina);
+      res.json({ success: true, data: { veiculo: rows[0], resumo, itens }, meta });
     } catch (error) {
       next(error);
     }
