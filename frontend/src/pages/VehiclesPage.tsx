@@ -36,6 +36,7 @@ import {
   CheckCircle,
   DirectionsCar,
   Edit,
+  History,
   FilterAltOff,
   MoreVert,
   Search,
@@ -56,6 +57,7 @@ import {
 import SituacaoChip from '../components/veiculos/SituacaoChip';
 import VeiculoFormDialog from '../components/veiculos/VeiculoFormDialog';
 import Indicador from '../components/Indicador';
+import HistoricoDialog, { AlvoHistorico } from '../components/reservas/HistoricoDialog';
 
 const km = (n: number) => `${n.toLocaleString('pt-BR')}\u00A0km`;
 
@@ -77,6 +79,7 @@ const VehiclesPage: React.FC = () => {
   const [editando, setEditando] = useState<Veiculo | null>(null);
   const [erroForm, setErroForm] = useState<ApiError | null>(null);
   const [menu, setMenu] = useState<{ anchor: HTMLElement; veiculo: Veiculo } | null>(null);
+  const [historico, setHistorico] = useState<AlvoHistorico | null>(null);
 
   // Aguarda o usuário parar de digitar antes de consultar a API
   useEffect(() => {
@@ -123,12 +126,24 @@ const VehiclesPage: React.FC = () => {
   const veiculos = lista.data ?? [];
   const r = resumo.data;
 
-  const acoes = (v: Veiculo) => podeGerenciar && (
-    <Tooltip title="Mais ações">
-      <IconButton aria-label={`Ações do veículo ${v.placa}`} onClick={(e) => { e.stopPropagation(); setMenu({ anchor: e.currentTarget, veiculo: v }); }}>
-        <MoreVert />
-      </IconButton>
-    </Tooltip>
+  const acoes = (v: Veiculo) => (
+    <Stack direction="row" justifyContent="flex-end" gap={0.5} flexWrap="nowrap">
+      <Tooltip title="Histórico de utilização">
+        <IconButton
+          aria-label={`Histórico de utilização do veículo ${v.placa}`}
+          onClick={(e) => { e.stopPropagation(); setHistorico({ tipo: 'veiculo', id: v.id, titulo: `${v.placa} — ${v.marca} ${v.modelo} (${v.codigo})` }); }}
+        >
+          <History />
+        </IconButton>
+      </Tooltip>
+      {podeGerenciar && (
+        <Tooltip title="Mais ações">
+          <IconButton aria-label={`Ações do veículo ${v.placa}`} onClick={(e) => { e.stopPropagation(); setMenu({ anchor: e.currentTarget, veiculo: v }); }}>
+            <MoreVert />
+          </IconButton>
+        </Tooltip>
+      )}
+    </Stack>
   );
 
   return (
@@ -236,7 +251,7 @@ const VehiclesPage: React.FC = () => {
                   <TableCell align="right">Quilometragem</TableCell>
                   <TableCell>Modalidade</TableCell>
                   <TableCell>Situação</TableCell>
-                  {podeGerenciar && <TableCell align="right">Ações</TableCell>}
+                  <TableCell align="right">Ações</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -250,7 +265,7 @@ const VehiclesPage: React.FC = () => {
                     <TableCell align="right">{km(v.quilometragem)}</TableCell>
                     <TableCell>{v.modalidade === 'pool' ? 'Pool' : 'Atribuído'}</TableCell>
                     <TableCell><SituacaoChip situacao={v.situacao} /></TableCell>
-                    {podeGerenciar && <TableCell align="right">{acoes(v)}</TableCell>}
+                    <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>{acoes(v)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -309,6 +324,8 @@ const VehiclesPage: React.FC = () => {
           </MenuItem>
         ))}
       </Menu>
+
+      <HistoricoDialog alvo={historico} onClose={() => setHistorico(null)} />
 
       <VeiculoFormDialog
         open={formAberto}

@@ -1,5 +1,5 @@
 import axios, { AxiosError, AxiosInstance } from 'axios';
-import { ApiResponse } from '../types';
+import { ApiResponse, Paginacao } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 export const TOKEN_KEY = 'frotamax_token';
@@ -54,6 +54,16 @@ class ApiService {
     try {
       const { data } = await this.client.get<ApiResponse<T>>(url, { params });
       return data.data as T;
+    } catch (error) {
+      throw this.toApiError(error);
+    }
+  }
+
+  /** GET de consultas paginadas: devolve os dados e as informações da paginação. */
+  async getPaginado<T>(url: string, params?: Record<string, unknown>): Promise<{ data: T; meta?: Paginacao }> {
+    try {
+      const { data } = await this.client.get<ApiResponse<T>>(url, { params });
+      return { data: data.data as T, meta: data.meta };
     } catch (error) {
       throw this.toApiError(error);
     }

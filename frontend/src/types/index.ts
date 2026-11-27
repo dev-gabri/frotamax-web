@@ -19,6 +19,19 @@ export interface ApiResponse<T> {
   data?: T;
   error?: string;
   details?: string[];
+  meta?: Paginacao;
+}
+
+/** Paginação das consultas que podem crescer com o uso (Sprint 03). */
+export interface Paginacao {
+  pagina: number;
+  por_pagina: number;
+  total: number;
+}
+
+export interface Pagina<T> {
+  itens: T[];
+  meta: Paginacao;
 }
 
 export type TipoVeiculo = 'hatch' | 'sedan' | 'suv' | 'picape' | 'utilitario' | 'caminhao' | 'outro';
@@ -165,7 +178,16 @@ export interface Reserva {
   motivo_cancelamento: string | null;
   atrasada: boolean;
   criado_em: string;
-  veiculo: { id: string; codigo: string; placa: string; marca: string; modelo: string };
+  /** Devolução (Sprint 03) */
+  km_retirada: number | null;
+  km_devolucao: number | null;
+  km_percorridos: number | null;
+  observacao_devolucao: string | null;
+  enviado_manutencao: boolean;
+  devolvida_com_atraso: boolean;
+  veiculo: {
+    id: string; codigo: string; placa: string; marca: string; modelo: string; quilometragem: number; situacao: Situacao;
+  };
   condutor: { id: string; nome: string; matricula: string };
 }
 
@@ -201,6 +223,49 @@ export interface FiltrosReservas {
   busca?: string;
   status?: StatusReserva | '';
   tipo?: TipoReserva | '';
+  /** Período no formato AAAA-MM-DD (Sprint 03) */
+  de?: string;
+  ate?: string;
+  pagina?: number;
+  por_pagina?: number;
+}
+
+// ------------------------------------------------------------------ Devolução e histórico (Sprint 03)
+
+export interface DevolucaoInput {
+  devolvida_em: string;
+  km_devolucao: number;
+  observacao: string | null;
+  enviar_manutencao: boolean;
+}
+
+export interface ReservaAfetada {
+  numero: number;
+  inicio: string;
+  fim_previsto: string;
+  condutor: string;
+}
+
+export interface ResultadoDevolucao extends Reserva {
+  reservas_afetadas: ReservaAfetada[];
+}
+
+export interface ResumoHistorico {
+  movimentacoes: number;
+  concluidas: number;
+  canceladas: number;
+  em_aberto: number;
+  devolvidas_com_atraso: number;
+  km_percorridos: number;
+  ultima_devolucao: string | null;
+}
+
+export interface HistoricoUtilizacao {
+  veiculo?: { id: string; codigo: string; placa: string; marca: string; modelo: string; quilometragem: number; situacao: Situacao; ativo: boolean };
+  condutor?: { id: string; nome: string; matricula: string; ativo: boolean };
+  resumo: ResumoHistorico;
+  itens: Reserva[];
+  meta: Paginacao;
 }
 
 export interface VeiculoDisponivel {

@@ -27,7 +27,7 @@ import {
   useMediaQuery,
   useTheme,
 } from '@mui/material';
-import { Add, Badge, Edit, ErrorOutline, FilterAltOff, Search, VerifiedUser, WarningAmber } from '@mui/icons-material';
+import { Add, Badge, Edit, ErrorOutline, FilterAltOff, History, Search, VerifiedUser, WarningAmber } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import { condutorService } from '../services/condutorService';
 import { ApiError } from '../services/apiService';
@@ -37,6 +37,7 @@ import Indicador from '../components/Indicador';
 import CnhChip from '../components/condutores/CnhChip';
 import PoolChip from '../components/condutores/PoolChip';
 import CondutorFormDialog from '../components/condutores/CondutorFormDialog';
+import HistoricoDialog, { AlvoHistorico } from '../components/reservas/HistoricoDialog';
 
 const FILTROS_INICIAIS: FiltrosCondutores = { busca: '', situacao_cnh: '', liberado_pool: '', ativo: 'true' };
 
@@ -57,6 +58,7 @@ const DriversPage: React.FC = () => {
   const [formAberto, setFormAberto] = useState(false);
   const [editando, setEditando] = useState<Condutor | null>(null);
   const [erroForm, setErroForm] = useState<ApiError | null>(null);
+  const [historico, setHistorico] = useState<AlvoHistorico | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setFiltros((f) => ({ ...f, busca: buscaDigitada.trim() })), 350);
@@ -89,12 +91,24 @@ const DriversPage: React.FC = () => {
   const condutores = lista.data ?? [];
   const r = resumo.data;
 
-  const acaoEditar = (c: Condutor) => podeGerenciar && (
-    <Tooltip title="Editar condutor">
-      <IconButton aria-label={`Editar condutor ${c.nome}`} onClick={(e) => { e.stopPropagation(); abrirEdicao(c); }}>
-        <Edit />
-      </IconButton>
-    </Tooltip>
+  const acaoEditar = (c: Condutor) => (
+    <Stack direction="row" justifyContent="flex-end" gap={0.5} flexWrap="nowrap">
+      <Tooltip title="Histórico de utilização">
+        <IconButton
+          aria-label={`Histórico de utilização do condutor ${c.nome}`}
+          onClick={(e) => { e.stopPropagation(); setHistorico({ tipo: 'condutor', id: c.id, titulo: `${c.nome} (${c.matricula})` }); }}
+        >
+          <History />
+        </IconButton>
+      </Tooltip>
+      {podeGerenciar && (
+        <Tooltip title="Editar condutor">
+          <IconButton aria-label={`Editar condutor ${c.nome}`} onClick={(e) => { e.stopPropagation(); abrirEdicao(c); }}>
+            <Edit />
+          </IconButton>
+        </Tooltip>
+      )}
+    </Stack>
   );
 
   return (
@@ -193,7 +207,7 @@ const DriversPage: React.FC = () => {
                   <TableCell>Validade da CNH</TableCell>
                   <TableCell>Liberação</TableCell>
                   <TableCell>Telefone</TableCell>
-                  {podeGerenciar && <TableCell align="right">Ações</TableCell>}
+                  <TableCell align="right">Ações</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -210,7 +224,7 @@ const DriversPage: React.FC = () => {
                     </TableCell>
                     <TableCell><PoolChip liberado={c.liberado_pool} /></TableCell>
                     <TableCell>{c.telefone || '—'}</TableCell>
-                    {podeGerenciar && <TableCell align="right">{acaoEditar(c)}</TableCell>}
+                    <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>{acaoEditar(c)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -244,6 +258,8 @@ const DriversPage: React.FC = () => {
           ))}
         </Stack>
       )}
+
+      <HistoricoDialog alvo={historico} onClose={() => setHistorico(null)} />
 
       <CondutorFormDialog
         open={formAberto}

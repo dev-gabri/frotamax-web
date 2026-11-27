@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSnackbar } from 'notistack';
 import {
   Alert,
@@ -24,6 +24,7 @@ import {
   TableCell,
   TableContainer,
   TableHead,
+  TablePagination,
   TableRow,
   TextField,
   Tooltip,
@@ -38,6 +39,7 @@ import {
   EventAvailable,
   FilterAltOff,
   Info,
+  KeyboardReturn,
   Schedule,
   Search,
   WarningAmber,
@@ -46,26 +48,31 @@ import { useAuth } from '../contexts/AuthContext';
 import { reservaService } from '../services/reservaService';
 import { ApiError } from '../services/apiService';
 import {
+  DevolucaoInput,
   FiltrosReservas,
   Reserva,
   ReservaInput,
+  ResultadoDevolucao,
   STATUS_RESERVA_LABELS,
   StatusReserva,
   TIPO_RESERVA_LABELS,
   TipoReserva,
 } from '../types';
-import { numeroReserva, periodo } from '../utils/datas';
+import { dataHora, numeroReserva, periodo } from '../utils/datas';
 import Indicador from '../components/Indicador';
 import StatusReservaChip from '../components/reservas/StatusReservaChip';
 import ReservaFormDialog from '../components/reservas/ReservaFormDialog';
 import CancelarReservaDialog from '../components/reservas/CancelarReservaDialog';
 import ReservaDetalhesDialog from '../components/reservas/ReservaDetalhesDialog';
+import DevolucaoDialog from '../components/reservas/DevolucaoDialog';
 
-const FILTROS_INICIAIS: FiltrosReservas = { busca: '', status: '', tipo: '' };
+const FILTROS_INICIAIS: FiltrosReservas = { busca: '', status: '', tipo: '', de: '', ate: '' };
+const POR_PAGINA = 25;
 
 /**
  * Reservas e empréstimos de veículos POOL (Sprint 02): indicadores, busca, filtros, registro,
  * retirada, cancelamento e consulta do histórico. As regras são verificadas pela API.
+ * Sprint 03: registro da devolução, filtro por período e paginação das movimentações.
  */
 const ReservationsPage: React.FC = () => {
   const theme = useTheme();
@@ -83,18 +90,27 @@ const ReservationsPage: React.FC = () => {
   const [erroCancelamento, setErroCancelamento] = useState<ApiError | null>(null);
   const [retirando, setRetirando] = useState<Reserva | null>(null);
   const [detalheId, setDetalheId] = useState<string | null>(null);
+  const [devolvendo, setDevolvendo] = useState<Reserva | null>(null);
+  const [erroDevolucao, setErroDevolucao] = useState<ApiError | null>(null);
+  const [pagina, setPagina] = useState(0);
 
   useEffect(() => {
     const t = setTimeout(() => setFiltros((f) => ({ ...f, busca: buscaDigitada.trim() })), 350);
     return () => clearTimeout(t);
   }, [buscaDigitada]);
 
-  const lista = useQuery({ queryKey: ['reservas', filtros], queryFn: () => reservaService.listar(filtros) });
+  useEffect(() => { setPagina(0); }, [filtros]);
+
+  const lista = useQuery({
+    queryKey: ['reservas', filtros, pagina],
+    queryFn: () => reservaService.listar({ ...filtros, pagina: pagina + 1, por_pagina: POR_PAGINA }),
+    placeholderData: keepPreviousData,
+  });
   const resumo = useQuery({ queryKey: ['reservas-resumo'], queryFn: reservaService.resumo });
 
   /** Reservas alteram também a situação dos veículos e a disponibilidade. */
   const atualizarDados = () => {
-    ['reservas', 'reservas-resumo', 'reserva', 'disponibilidade', 'veiculos', 'veiculos-resumo']
+    ['reservas', 'reservas-resumo', 'reserva', 'disponibilidade', 'veiculos', 'veiculos-resumo', 'historico']
       .forEach((k) => queryClient.invalidateQueries({ queryKey: [k] }));
   };
 
@@ -133,10 +149,44 @@ const ReservationsPage: React.FC = () => {
     onError: (error: ApiError) => setErroCancelamento(error),
   });
 
-  const filtrosAtivos = useMemo(() => !!(filtros.busca || filtros.status || filtros.tipo), [filtros]);
+  const devolver = useMutation({
+    mutationFn: ({ r, dados }: { r: Reserva; dados: DevolucaoInput }) => reservaService.registrarDevolucao(r.id, dados),
+    onSuccess: (r: ResultadoDevolucao) => {
+      enqueueSnackbar(
+        r.enviado_manutencao
+          ? `Devolução registrada. ${r.veiculo.placa} foi enviado para manutenção.`
+          : `Devolução registrada. ${r.veiculo.placa} está disponível.`,
+        { variant: 'success' }
+      );
+      if (r.reservas_afetadas.length > 0) {
+        const numeros = r.reservas_afetadas.map((a) => numeroReserva(a.numero)).join(', ');
+        enqueueSnackbar(
+          `Atenção: ${r.veiculo.placa} tem ${r.reservas_afetadas.length} reserva(s) agendada(s) (nº ${numeros}). `
+          + 'Cancele-as ou aguarde a liberação do veículo antes da retirada.',
+          { variant: 'warning', autoHideDuration: 12000 }
+        );
+      }
+      setDevolvendo(null);
+      atualizarDados();
+    },
+    onError: (error: ApiError) => setErroDevolucao(error),
+  });
+
+  const filtrosAtivos = useMemo(
+    () => !!(filtros.busca || filtros.status || filtros.tipo || filtros.de || filtros.ate),
+    [filtros]
+  );
   const limparFiltros = () => { setBuscaDigitada(''); setFiltros(FILTROS_INICIAIS); };
 
-  const reservas = lista.data ?? [];
+  const reservas = lista.data?.itens ?? [];
+  const total = lista.data?.meta.total ?? 0;
+  const paginacao = total > POR_PAGINA && (
+    <TablePagination
+      component="div" count={total} page={pagina} onPageChange={(_e, p) => setPagina(p)}
+      rowsPerPage={POR_PAGINA} rowsPerPageOptions={[POR_PAGINA]}
+      labelDisplayedRows={({ from, to, count }) => `${from}–${to} de ${count}`}
+    />
+  );
   const r = resumo.data;
 
   const acoes = (res: Reserva) => (
@@ -144,6 +194,12 @@ const ReservationsPage: React.FC = () => {
       <Tooltip title="Ver detalhes">
         <IconButton aria-label={`Detalhes da reserva ${numeroReserva(res.numero)}`} onClick={() => setDetalheId(res.id)}><Info /></IconButton>
       </Tooltip>
+      {podeGerenciar && res.status === 'em_uso' && (
+        <Button size="small" variant="outlined" color="success" startIcon={<KeyboardReturn />}
+          onClick={() => { setErroDevolucao(null); setDevolvendo(res); }}>
+          Devolução
+        </Button>
+      )}
       {podeGerenciar && res.status === 'agendada' && (
         <>
           <Button size="small" variant="outlined" startIcon={<DirectionsCar />} onClick={() => setRetirando(res)}>Retirada</Button>
@@ -185,7 +241,7 @@ const ReservationsPage: React.FC = () => {
       <Card sx={{ mb: 2 }}>
         <CardContent>
           <Grid container spacing={2} alignItems="center">
-            <Grid size={{ xs: 12, md: 5 }}>
+            <Grid size={{ xs: 12, md: 3 }}>
               <TextField
                 label="Buscar"
                 placeholder="Nº, placa, veículo, condutor, matrícula ou finalidade"
@@ -194,17 +250,29 @@ const ReservationsPage: React.FC = () => {
                 InputProps={{ startAdornment: <InputAdornment position="start"><Search /></InputAdornment> }}
               />
             </Grid>
-            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+            <Grid size={{ xs: 12, sm: 6, md: 2 }}>
               <TextField select label="Status" value={filtros.status} onChange={(e) => setFiltros((f) => ({ ...f, status: e.target.value as StatusReserva }))}>
                 <MenuItem value="">Todos</MenuItem>
                 {Object.entries(STATUS_RESERVA_LABELS).map(([v, l]) => <MenuItem key={v} value={v}>{l}</MenuItem>)}
               </TextField>
             </Grid>
-            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+            <Grid size={{ xs: 12, sm: 6, md: 2 }}>
               <TextField select label="Tipo" value={filtros.tipo} onChange={(e) => setFiltros((f) => ({ ...f, tipo: e.target.value as TipoReserva }))}>
                 <MenuItem value="">Todos</MenuItem>
                 {Object.entries(TIPO_RESERVA_LABELS).map(([v, l]) => <MenuItem key={v} value={v}>{l}</MenuItem>)}
               </TextField>
+            </Grid>
+            <Grid size={{ xs: 6, md: 2 }}>
+              <TextField
+                id="filtro-de" label="De" type="date" value={filtros.de} InputLabelProps={{ shrink: true }}
+                onChange={(e) => setFiltros((f) => ({ ...f, de: e.target.value }))}
+              />
+            </Grid>
+            <Grid size={{ xs: 6, md: 2 }}>
+              <TextField
+                id="filtro-ate" label="Até" type="date" value={filtros.ate} InputLabelProps={{ shrink: true }}
+                onChange={(e) => setFiltros((f) => ({ ...f, ate: e.target.value }))}
+              />
             </Grid>
             <Grid size={{ xs: 12, md: 1 }} sx={{ textAlign: { md: 'right' } }}>
               {telaPequena ? (
@@ -235,7 +303,9 @@ const ReservationsPage: React.FC = () => {
         <Card>
           <Box px={2} py={1.5}>
             <Typography variant="subtitle1" fontWeight={600}>Reservas e empréstimos</Typography>
-            <Typography variant="caption" color="text.secondary">{reservas.length} registro(s) exibido(s) · em uso e agendadas primeiro</Typography>
+            <Typography variant="caption" color="text.secondary">
+              {total} registro(s) encontrado(s) · em uso e agendadas primeiro; encerradas da mais recente para a mais antiga
+            </Typography>
           </Box>
           <Divider />
           <TableContainer>
@@ -268,19 +338,27 @@ const ReservationsPage: React.FC = () => {
                     </TableCell>
                     <TableCell sx={{ whiteSpace: 'nowrap' }}>{periodo(res.inicio, res.fim_previsto)}</TableCell>
                     <TableCell sx={{ maxWidth: 200 }}>{res.finalidade}</TableCell>
-                    <TableCell><StatusReservaChip status={res.status} atrasada={res.atrasada} /></TableCell>
+                    <TableCell>
+                      <StatusReservaChip status={res.status} atrasada={res.atrasada} />
+                      {res.devolvida_em && (
+                        <Typography variant="caption" color={res.devolvida_com_atraso ? 'error.main' : 'text.secondary'} display="block" mt={0.5}>
+                          Devolvido em {dataHora(res.devolvida_em)}{res.devolvida_com_atraso ? ' (com atraso)' : ''}
+                        </Typography>
+                      )}
+                    </TableCell>
                     <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>{acoes(res)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
           </TableContainer>
+          {paginacao}
         </Card>
       )}
 
       {lista.isSuccess && reservas.length > 0 && telaPequena && (
         <Stack spacing={1.5} aria-label="Lista de reservas e empréstimos">
-          <Typography variant="caption" color="text.secondary">{reservas.length} registro(s) exibido(s)</Typography>
+          <Typography variant="caption" color="text.secondary">{total} registro(s) encontrado(s)</Typography>
           {reservas.map((res) => (
             <Card key={res.id}>
               <CardContent>
@@ -297,10 +375,16 @@ const ReservationsPage: React.FC = () => {
                 <Typography variant="body2" color="text.secondary">{periodo(res.inicio, res.fim_previsto)}</Typography>
                 <Typography variant="caption" color="text.secondary" display="block" mb={1}>{res.finalidade}</Typography>
                 <StatusReservaChip status={res.status} atrasada={res.atrasada} />
+                {res.devolvida_em && (
+                  <Typography variant="caption" color={res.devolvida_com_atraso ? 'error.main' : 'text.secondary'} display="block" mt={0.5}>
+                    Devolvido em {dataHora(res.devolvida_em)}{res.devolvida_com_atraso ? ' (com atraso)' : ''}
+                  </Typography>
+                )}
                 <Box mt={1}>{acoes(res)}</Box>
               </CardContent>
             </Card>
           ))}
+          {paginacao}
         </Stack>
       )}
 
@@ -343,6 +427,14 @@ const ReservationsPage: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      <DevolucaoDialog
+        reserva={devolvendo}
+        salvando={devolver.isPending}
+        erroApi={erroDevolucao}
+        onClose={() => setDevolvendo(null)}
+        onConfirm={(dados) => devolvendo && devolver.mutate({ r: devolvendo, dados })}
+      />
 
       <ReservaDetalhesDialog id={detalheId} onClose={() => setDetalheId(null)} />
     </Box>

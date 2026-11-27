@@ -31,6 +31,9 @@ const EVENTOS: Record<EventoReserva['evento'], { texto: string; icone: React.Rea
   devolucao: { texto: 'Devolução', icone: <KeyboardReturn color="success" /> },
 };
 
+const formatoKm = new Intl.NumberFormat('pt-BR');
+const km = (valor: number) => `${formatoKm.format(valor)} km`;
+
 const Campo: React.FC<{ rotulo: string; valor: React.ReactNode }> = ({ rotulo, valor }) => (
   <Box>
     <Typography variant="caption" color="text.secondary">{rotulo}</Typography>
@@ -58,6 +61,30 @@ const ReservaDetalhesDialog: React.FC<{ id: string | null; onClose: () => void }
               <Grid size={{ xs: 12, sm: 6 }}><Campo rotulo="Início" valor={dataHora(r.inicio)} /></Grid>
               <Grid size={{ xs: 12, sm: 6 }}><Campo rotulo="Previsão de devolução" valor={dataHora(r.fim_previsto)} /></Grid>
               {r.retirada_em && <Grid size={{ xs: 12, sm: 6 }}><Campo rotulo="Retirada registrada em" valor={dataHora(r.retirada_em)} /></Grid>}
+              {r.devolvida_em && (
+                <Grid size={{ xs: 12, sm: 6 }}>
+                  <Campo
+                    rotulo="Devolução registrada em"
+                    valor={<>{dataHora(r.devolvida_em)}{r.devolvida_com_atraso && <Typography component="span" variant="body2" color="error.main"> · com atraso</Typography>}</>}
+                  />
+                </Grid>
+              )}
+              {r.km_retirada !== null && (
+                <Grid size={{ xs: 12, sm: 6 }}>
+                  <Campo
+                    rotulo="Quilometragem"
+                    valor={r.km_devolucao !== null
+                      ? `${km(r.km_retirada)} → ${km(r.km_devolucao)} (${km(r.km_percorridos ?? 0)} percorridos)`
+                      : `${km(r.km_retirada)} na retirada`}
+                  />
+                </Grid>
+              )}
+              {r.status === 'concluida' && (
+                <Grid size={{ xs: 12, sm: 6 }}>
+                  <Campo rotulo="Situação do veículo após a devolução" valor={r.enviado_manutencao ? 'Enviado para manutenção' : 'Disponível'} />
+                </Grid>
+              )}
+              {r.observacao_devolucao && <Grid size={12}><Campo rotulo="Observação da devolução" valor={r.observacao_devolucao} /></Grid>}
               <Grid size={12}><Campo rotulo="Finalidade" valor={r.finalidade} /></Grid>
               {r.observacoes && <Grid size={12}><Campo rotulo="Observações" valor={r.observacoes} /></Grid>}
               {r.motivo_cancelamento && <Grid size={12}><Campo rotulo="Motivo do cancelamento" valor={r.motivo_cancelamento} /></Grid>}
