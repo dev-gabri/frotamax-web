@@ -160,6 +160,15 @@ router.put('/:id', authorize('veiculos:gerenciar'), validate(idSchema, 'params')
       if (dados.quilometragem !== undefined && Number(dados.quilometragem) < atual.quilometragem) {
         throw new AppError(422, `A quilometragem informada é menor que a registrada (${atual.quilometragem} km).`);
       }
+      if (dados.situacao !== undefined && dados.situacao !== atual.situacao) {
+        await validarMudancaSituacao(atual, dados.situacao as string, (dados.modalidade as string) ?? atual.modalidade);
+      }
+      if (dados.modalidade === 'atribuido' && atual.modalidade === 'pool') {
+        const ativas = await reservasAtivas(atual.id);
+        if (ativas) {
+          throw new AppError(409, `O veículo possui ${ativas} reserva(s) ou empréstimo(s) em aberto e não pode passar para uso atribuído.`);
+        }
+      }
       await garantirUnicidade(dados.placa as string | undefined, dados.codigo as string | undefined, atual.id);
 
       const campos = Object.keys(dados);
@@ -183,6 +192,9 @@ router.patch('/:id/situacao', authorize('veiculos:gerenciar'), validate(idSchema
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const atual = await buscarAtivo(req.params.id);
+      if (req.body.situacao !== atual.situacao) {
+        await validarMudancaSituacao(atual, req.body.situacao, atual.modalidade);
+      }
       const { rows } = await query(
         `UPDATE veiculos SET situacao = $1, atualizado_por = $2 WHERE id = $3 RETURNING ${COLUNAS}`,
         [req.body.situacao, req.usuario!.id, atual.id]
@@ -193,13 +205,42 @@ router.patch('/:id/situacao', authorize('veiculos:gerenciar'), validate(idSchema
     }
   });
 
+interface VeiculoAtual { id: string; quilometragem: number; situacao: string; modalidade: string }
+
 async function buscarAtivo(id: string) {
-  const { rows } = await query<{ id: string; quilometragem: number }>(
-    'SELECT id, quilometragem FROM veiculos WHERE id = $1 AND ativo = TRUE',
+  const { rows } = await query<VeiculoAtual>(
+    'SELECT id, quilometragem, situacao, modalidade FROM veiculos WHERE id = $1 AND ativo = TRUE',
     [id]
   );
   if (!rows[0]) throw new AppError(404, 'Veículo não encontrado.');
   return rows[0];
+}
+
+async function reservasAtivas(veiculoId: string): Promise<number> {
+  const { rows } = await query<{ total: string }>(
+    `SELECT COUNT(*) AS total FROM reservas WHERE veiculo_id = $1 AND status IN ('agendada', 'em_uso')`,
+    [veiculoId]
+  );
+  return Number(rows[0].total);
+}
+
+/**
+ * Mantém a situação coerente com os empréstimos (Sprint 02):
+ *  - um veículo POOL só fica "em uso" por meio do registro de um empréstimo ou retirada;
+ *  - enquanto houver empréstimo em andamento, a situação só muda com o registro da devolução.
+ */
+async function validarMudancaSituacao(atual: VeiculoAtual, nova: string, modalidade: string) {
+  const { rows } = await query<{ numero: number }>(
+    `SELECT numero FROM reservas WHERE veiculo_id = $1 AND status = 'em_uso' LIMIT 1`,
+    [atual.id]
+  );
+  if (rows[0]) {
+    throw new AppError(409, `O veículo está emprestado (nº ${String(rows[0].numero).padStart(4, '0')}). `
+      + 'A situação será atualizada no registro da devolução.');
+  }
+  if (nova === 'em_uso' && modalidade === 'pool') {
+    throw new AppError(422, 'Para colocar um veículo POOL em uso, registre um empréstimo ou a retirada de uma reserva.');
+  }
 }
 
 /** Retorna mensagens claras quando placa ou código já pertencem a outro veículo. */
