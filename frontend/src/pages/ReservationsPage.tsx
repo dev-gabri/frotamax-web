@@ -140,7 +140,7 @@ const ReservationsPage: React.FC = () => {
   const r = resumo.data;
 
   const acoes = (res: Reserva) => (
-    <Stack direction="row" justifyContent="flex-end" gap={0.5} flexWrap="wrap">
+    <Stack direction="row" justifyContent="flex-end" alignItems="center" gap={0.5} flexWrap="nowrap">
       <Tooltip title="Ver detalhes">
         <IconButton aria-label={`Detalhes da reserva ${numeroReserva(res.numero)}`} onClick={() => setDetalheId(res.id)}><Info /></IconButton>
       </Tooltip>
@@ -267,9 +267,9 @@ const ReservationsPage: React.FC = () => {
                       <Typography variant="caption" color="text.secondary">{res.condutor.matricula}</Typography>
                     </TableCell>
                     <TableCell sx={{ whiteSpace: 'nowrap' }}>{periodo(res.inicio, res.fim_previsto)}</TableCell>
-                    <TableCell sx={{ maxWidth: 220 }}>{res.finalidade}</TableCell>
+                    <TableCell sx={{ maxWidth: 200 }}>{res.finalidade}</TableCell>
                     <TableCell><StatusReservaChip status={res.status} atrasada={res.atrasada} /></TableCell>
-                    <TableCell align="right">{acoes(res)}</TableCell>
+                    <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>{acoes(res)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

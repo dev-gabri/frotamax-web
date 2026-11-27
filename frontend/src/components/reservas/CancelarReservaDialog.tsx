@@ -39,7 +39,7 @@ const CancelarReservaDialog: React.FC<Props> = ({ reserva, salvando, erroApi, on
           )}
           <TextField
             id="cancelamento-motivo" label="Motivo do cancelamento" required multiline minRows={2} autoFocus
-            value={motivo} onChange={(e) => setMotivo(e.target.value)} inputProps={{ maxLength: 300 }}
+            value={motivo} onChange={(e) => { setMotivo(e.target.value); if (erro) setErro(''); }} inputProps={{ maxLength: 300 }}
             error={!!erro} helperText={erro} disabled={salvando}
           />
         </DialogContent>

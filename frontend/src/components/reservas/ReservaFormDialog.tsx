@@ -101,8 +101,11 @@ const ReservaFormDialog: React.FC<Props> = ({ open, salvando, erroApi, onClose, 
     [condutores.data, form.condutor_id]
   );
 
-  const set = (campo: keyof Form) => (e: React.ChangeEvent<HTMLInputElement>) =>
+  // A mensagem de erro do campo some assim que ele é corrigido (BUG-03)
+  const set = (campo: keyof Form) => (e: React.ChangeEvent<HTMLInputElement>) => {
     setForm((f) => ({ ...f, [campo]: e.target.value }));
+    setErros((atual) => (atual[campo] ? { ...atual, [campo]: undefined } : atual));
+  };
 
   const validar = () => {
     const e: Partial<Record<keyof Form, string>> = {};
