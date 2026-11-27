@@ -1,63 +1,39 @@
-import { expect, Page, test } from '@playwright/test';
+import { expect, test } from '@playwright/test';
+import {
+  abrirMenu, cadastrarCondutor, cadastrarVeiculo, dataHoraLocal, entrar, inativarCondutor, inativarVeiculo,
+  placaUnica, SENHA, sufixoUnico,
+} from './apoio';
 
 /**
  * Roteiro de navegador automatizado (ação da retrospectiva da Sprint 02):
  * cadastro de condutor → empréstimo → devolução → histórico do veículo e do condutor.
- * Usa somente dados fictícios; cada execução cria um condutor novo com matrícula única.
+ * Usa somente dados fictícios. Desde a Sprint 04, o teste cria o próprio veículo e o inativa
+ * ao final, junto com o condutor, para não alterar os dados de demonstração.
  * A senha é a mesma de SEED_SENHA (backend/.env), informada em E2E_SENHA.
  */
-const SENHA = process.env.E2E_SENHA;
 test.skip(!SENHA, 'Informe a senha dos usuários de demonstração em E2E_SENHA (a mesma de SEED_SENHA).');
 
-async function entrar(page: Page, email: string) {
-  await page.goto('/login');
-  await page.getByLabel('E-mail').fill(email);
-  await page.getByLabel('Senha', { exact: false }).first().fill(SENHA!);
-  await page.getByRole('button', { name: 'Entrar' }).click();
-  await page.waitForURL((url) => url.pathname === '/');
-}
-
-/** Navega pelo menu principal (a tela inicial também tem botões com os mesmos nomes). */
-async function abrirMenu(page: Page, item: string) {
-  await page.getByRole('navigation', { name: 'Menu principal' }).getByRole('button', { name: item, exact: true }).click();
-}
-
 const formato = new Intl.NumberFormat('pt-BR');
-const dataHoraLocal = (d: Date) => {
-  const p = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
-};
 
 test('ciclo completo: condutor, empréstimo, devolução e histórico', async ({ page }) => {
-  const sufixo = Date.now().toString().slice(-6);
+  const sufixo = sufixoUnico();
   const nome = `Condutor Teste ${sufixo}`;
-  const matricula = `E2E-${sufixo}`;
+  const placa = placaUnica();
+  const kmRetirada = 12_000;
   await entrar(page, 'gestor@frotamax.local');
 
-  // 1. Cadastro de condutor liberado para o POOL
-  await abrirMenu(page, 'Condutores');
-  await page.getByRole('button', { name: 'Novo condutor' }).click();
-  const formCondutor = page.getByRole('dialog');
-  await formCondutor.getByLabel(/^Nome completo/).fill(nome);
-  await formCondutor.getByLabel(/^Matrícula/).fill(matricula);
-  await formCondutor.getByLabel(/^Categoria da CNH/).click();
-  await page.getByRole('option', { name: 'B', exact: true }).click();
-  const validade = new Date(Date.now() + 800 * 86_400_000);
-  await formCondutor.getByLabel(/^Validade da CNH/).fill(validade.toISOString().slice(0, 10));
-  await formCondutor.getByLabel('Liberado para utilizar veículos POOL').check();
-  await formCondutor.getByRole('button', { name: 'Cadastrar condutor' }).click();
-  await expect(page.getByText(`Condutor ${nome} cadastrado.`)).toBeVisible();
+  // 1. Cadastros: condutor liberado para o POOL e veículo POOL disponível
+  await cadastrarCondutor(page, { nome, matricula: `E2E-${sufixo}` });
+  await cadastrarVeiculo(page, { codigo: `E2E-V${sufixo}`, placa, quilometragem: kmRetirada });
 
-  // 2. Empréstimo (retirada imediata) do primeiro veículo POOL disponível
+  // 2. Empréstimo (retirada imediata) do veículo cadastrado
   await abrirMenu(page, 'Reservas e empréstimos');
   await page.getByRole('button', { name: 'Nova reserva ou empréstimo' }).click();
   const formReserva = page.getByRole('dialog');
   await formReserva.getByRole('button', { name: /Empréstimo/ }).click();
   await formReserva.getByLabel(/^Previsão de devolução/).fill(dataHoraLocal(new Date(Date.now() + 3 * 3_600_000)));
   await formReserva.getByLabel(/^Veículo POOL disponível/).click();
-  const opcao = page.getByRole('option').filter({ hasText: /[A-Z]{3}\d[A-Z0-9]\d{2}/ }).first();
-  const placa = ((await opcao.innerText()).match(/[A-Z]{3}\d[A-Z0-9]\d{2}/) || [''])[0];
-  await opcao.click();
+  await page.getByRole('option').filter({ hasText: placa }).click();
   await formReserva.getByLabel(/^Condutor/).click();
   await page.getByRole('option', { name: new RegExp(nome) }).click();
   await formReserva.getByLabel(/^Finalidade/).fill('Teste automatizado de navegador');
@@ -68,8 +44,7 @@ test('ciclo completo: condutor, empréstimo, devolução e histórico', async ({
   const linha = page.getByRole('row').filter({ hasText: placa }).filter({ hasText: nome });
   await linha.getByRole('button', { name: 'Devolução' }).click();
   const formDevolucao = page.getByRole('dialog');
-  const ajuda = await formDevolucao.getByText(/^Na retirada: /).innerText();
-  const kmRetirada = Number(ajuda.replace(/\D/g, ''));
+  await expect(formDevolucao.getByText(/^Na retirada: /)).toContainText(formato.format(kmRetirada));
   await formDevolucao.getByLabel(/^Quilometragem de chegada/).fill(String(kmRetirada - 1));
   await formDevolucao.getByRole('button', { name: 'Registrar devolução' }).click();
   await expect(formDevolucao.getByText(/não pode ser menor que a registrada/)).toBeVisible();
@@ -95,6 +70,11 @@ test('ciclo completo: condutor, empréstimo, devolução e histórico', async ({
   await abrirMenu(page, 'Condutores');
   await page.getByRole('button', { name: `Histórico de utilização do condutor ${nome}` }).click();
   await expect(page.getByRole('dialog').getByRole('row').filter({ hasText: placa })).toContainText('42 km');
+  await page.getByRole('dialog').getByRole('button', { name: 'Fechar' }).click();
+
+  // 6. Limpeza: veículo e condutor do teste são inativados (o histórico permanece)
+  await inativarVeiculo(page, placa);
+  await inativarCondutor(page, nome);
 });
 
 test('perfil de consulta vê o histórico, mas não registra devolução', async ({ page }) => {

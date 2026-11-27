@@ -1,7 +1,8 @@
 import { defineConfig } from '@playwright/test';
 
 /**
- * Testes de navegador do Frota Max Web (Sprint 03).
+ * Testes de navegador do Frota Max Web (Sprints 03 e 04): ciclo de movimentação, regressão do MVP
+ * e responsividade.
  * Rodam contra o sistema já iniciado (npm run dev) e com os dados fictícios do seed.
  * Usam o navegador instalado no computador: Microsoft Edge no Windows e Google Chrome nos demais
  * sistemas (troque com a variável E2E_NAVEGADOR=chrome ou msedge). Nenhum navegador é baixado.
